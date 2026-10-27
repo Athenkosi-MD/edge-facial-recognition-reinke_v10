@@ -1,0 +1,974 @@
+{% extends 'base.html' %}
+{% block title %}{{ driver.first_name }} {{ driver.last_name }} — Edge Telematics{% endblock %}
+{% block page_title %}{{ driver.first_name }} {{ driver.last_name }}{% endblock %}
+{% block page_subtitle %}{{ driver.driver_id }} · Driver Profile{% endblock %}
+
+{% block head %}
+<style>
+  .profile-hero {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .profile-hero::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+  }
+  .profile-avatar-wrap { position: relative; flex-shrink: 0; }
+  .profile-avatar {
+    width: 110px; height: 110px;
+    border-radius: 14px;
+    object-fit: cover;
+    border: 2px solid var(--border);
+    display: block;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .profile-avatar:hover { opacity: 0.85; }
+  .profile-avatar-placeholder {
+    width: 110px; height: 110px;
+    border-radius: 14px;
+    background: rgba(30,123,196,0.10);
+    border: 2px solid rgba(30,123,196,0.20);
+    display: grid;
+    place-items: center;
+    font-family: var(--font-head);
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--accent);
+  }
+  .change-photo-btn {
+    position: absolute;
+    bottom: -8px; right: -8px;
+    width: 28px; height: 28px;
+    background: var(--accent);
+    border: 2px solid var(--surface);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    color: #fff;
+    font-size: 13px;
+    transition: transform 0.15s;
+  }
+  .change-photo-btn:hover { transform: scale(1.1); }
+  .profile-meta { flex: 1; }
+  .profile-name {
+    font-family: var(--font-head);
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .profile-id { font-size: 12px; color: var(--accent); letter-spacing: 1px; margin-bottom: 10px; }
+  .profile-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  .edit-panel {
+    display: none;
+    background: var(--surface2);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .edit-panel.open { display: block; }
+  .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .photos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .photo-thumb {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .photo-thumb:hover { border-color: var(--accent); }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-thumb .remove-btn {
+    position: absolute;
+    top: 4px; right: 4px;
+    width: 20px; height: 20px;
+    background: var(--danger);
+    border-radius: 50%;
+    display: none;
+    place-items: center;
+    color: #fff;
+    font-size: 10px;
+    cursor: pointer;
+    border: none;
+    z-index: 2;
+  }
+  .photo-thumb:hover .remove-btn { display: grid; }
+  .photo-thumb.is-profile { border-color: var(--accent); }
+  .photo-thumb .profile-badge {
+    position: absolute;
+    bottom: 4px; left: 4px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 8px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-weight: 700;
+  }
+  .add-photo-tile {
+    aspect-ratio: 1;
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 24px;
+    transition: all 0.15s;
+  }
+  .add-photo-tile:hover { border-color: var(--accent); color: var(--accent); background: rgba(30,123,196,0.05); }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .info-label { font-size: 9px; color: var(--text-dim); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px; }
+  .info-value { font-size: 13px; color: var(--text); }
+  .conf-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+  .conf-fill { height: 100%; border-radius: 2px; }
+  .export-dropdown { position: relative; }
+  .export-menu {
+    position: fixed;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 6px; min-width: 210px;
+    z-index: 99999; display: none;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .export-menu.open { display: block; }
+  .export-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 13px; border-radius: 7px; cursor: pointer;
+    font-size: 13px; color: var(--text-dim); transition: all 0.1s; text-decoration: none;
+    font-weight: 500;
+  }
+  .export-item:hover { background: var(--accent-pale); color: var(--accent); }
+  .section-title {
+    font-family: var(--font-head); font-size: 13px; font-weight: 700;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── Custom Fields ── */
+  .cf-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .cf-row:last-child { border-bottom: none; }
+  .cf-label {
+    font-size: 10px; color: var(--text-dim);
+    letter-spacing: 1.2px; text-transform: uppercase;
+    width: 140px; flex-shrink: 0;
+  }
+  .cf-value {
+    flex: 1; font-size: 13px; color: var(--text); min-height: 20px;
+  }
+  .cf-edit-input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 9px; font-size: 13px; color: var(--text);
+    display: none; min-width: 0;
+  }
+  .cf-edit-input:focus { outline: none; border-color: var(--accent); }
+  .cf-editing .cf-edit-input { display: block; }
+  .cf-editing .cf-value      { display: none; }
+  .cf-empty { color: var(--text-dim); font-style: italic; }
+  .cf-required-star { color: var(--danger); margin-left: 2px; font-size: 11px; }
+  .cf-no-fields { padding: 24px; text-align: center; color: var(--text-dim); font-size: 13px; }
+
+  /* ── Photo Lightbox ── */
+  .lightbox-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(5,12,25,0.88); z-index: 9999;
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px;
+  }
+  .lightbox-overlay.open { display: flex; }
+  .lightbox-img-wrap {
+    position: relative; max-width: 90vw; max-height: 72vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .lightbox-img {
+    max-width: 88vw; max-height: 70vh;
+    border-radius: 12px; border: 2px solid rgba(255,255,255,0.12);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    object-fit: contain; display: block;
+  }
+  .lightbox-close {
+    position: absolute; top: -14px; right: -14px;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--danger); border: 2px solid #fff;
+    color: #fff; font-size: 16px; cursor: pointer;
+    display: grid; place-items: center;
+  }
+  .lightbox-profile-badge {
+    position: absolute; bottom: 10px; left: 10px;
+    background: var(--accent); color: #fff; font-size: 9px;
+    font-weight: 700; padding: 3px 8px; border-radius: 4px;
+    letter-spacing: 0.8px; display: none;
+  }
+  .lightbox-profile-badge.visible { display: block; }
+  .lightbox-actions { display: flex; gap: 10px; align-items: center; }
+  .lightbox-btn {
+    padding: 9px 20px; border-radius: 8px; font-size: .84rem;
+    font-weight: 600; cursor: pointer; border: none; transition: opacity .15s;
+  }
+  .lightbox-btn:hover { opacity: .85; }
+  .lightbox-btn-primary  { background: var(--accent); color: #fff; }
+  .lightbox-btn-secondary { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.25); }
+  .lightbox-btn-danger   { background: var(--danger); color: #fff; }
+  .lightbox-counter { font-size: .78rem; color: rgba(255,255,255,0.5); user-select: none; }
+  .lightbox-nav {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    color: #fff; font-size: 18px; cursor: pointer;
+    display: grid; place-items: center; transition: background .15s;
+  }
+  .lightbox-nav:hover { background: rgba(255,255,255,0.25); }
+  .lightbox-nav.prev { left: -50px; }
+  .lightbox-nav.next { right: -50px; }
+
+  @media (max-width: 900px) {
+    .edit-grid, .info-grid { grid-template-columns: 1fr; }
+    .profile-hero { flex-direction: column; }
+    .lightbox-nav { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:16px;">
+  <a href="/drivers" class="btn btn-secondary btn-sm">← Back to Drivers</a>
+</div>
+
+<!-- Profile Hero -->
+<div class="profile-hero">
+  <div class="profile-avatar-wrap">
+    {% if driver.profile_photo %}
+    <img src="/api/drivers/{{ driver.driver_id }}/profile-photo" class="profile-avatar" id="profileAvatar"
+         alt="{{ driver.first_name }}" title="Click to view" onclick="openProfileLightbox()">
+    {% else %}
+    <div class="profile-avatar-placeholder" id="profileAvatar">{{ driver.first_name[0] }}{{ driver.last_name[0] }}</div>
+    {% endif %}
+    {% if perms.can_modify_driver %}
+    <label class="change-photo-btn" title="Change profile photo" for="profilePhotoInput">✎</label>
+    <input type="file" id="profilePhotoInput" accept="image/*" style="display:none" onchange="uploadProfilePhoto(this)">
+    {% endif %}
+  </div>
+  <div class="profile-meta">
+    <div class="profile-name">{{ driver.first_name }} {{ driver.last_name }}</div>
+    <div class="profile-id">{{ driver.driver_id }}</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      {% with d = driver %}{% include '_status_badge.html' %}{% include '_state_badge.html' %}{% endwith %}
+      {% if driver.trusttrack_id %}<span style="font-size:11px;color:var(--text-muted);" title="Trust Track driver id">· Trust Track ✓{% if driver.trusttrack_sync_pending %} (sync pending){% endif %}</span>
+      {% else %}<span style="font-size:11px;color:var(--warning);">· Not linked to Trust Track</span>{% endif %}
+      <span style="font-size:11px;color:var(--text-muted);">Enrolled {{ driver.enrollment_date.strftime('%d %B %Y') if driver.enrollment_date else 'Unknown' }}</span>
+      <span style="font-size:11px;color:var(--text-muted);">· {{ driver.photo_count }} face samples</span>
+    </div>
+    {% for a in pending_actions %}
+    <span class="badge {{ 'badge-danger' if a.status == 'FAILED' else 'badge-warning' }}" style="margin-top:10px;"
+          title="{{ a.error or 'Waiting for the recognition service' }}">{{ a.label }}: {{ 'retrying' if a.status == 'FAILED' else 'queued' }}</span>
+    {% endfor %}
+    {% if driver.is_deleted and driver.merged_into %}
+    <div class="alert alert-warning" style="margin-top:14px;"><div>Merged into <a href="/drivers/{{ driver.merged_into }}">{{ driver.merged_into }}</a>. This record is deleted.</div></div>
+    {% elif driver.state == 'UNIDENTIFIED' %}
+    <div class="alert alert-warning" style="margin-top:14px;"><div>
+      Created automatically from an unrecognised face{% if driver.first_seen_vehicle %} in {{ driver.first_seen_vehicle|replace('_', ' ') }}{% endif %}
+      {% if driver.first_seen_at %} on {{ driver.first_seen_at.strftime('%d %b %Y %H:%M') }}{% endif %}.
+      Seen {{ driver.sighting_count or 0 }} time(s). Unidentified-driver alerts continue until OCC reviews it.
+    </div></div>
+    {% elif driver.state == 'AUTO_ENROLLED' %}
+    <div class="alert alert-success" style="margin-top:14px;"><div>
+      Authorized{% if driver.confirmed_by_client %} by client contact <strong>{{ driver.confirmed_by_client }}</strong>{% endif %}
+      {% if driver.confirmed_by %} · recorded by {{ driver.confirmed_by }}{% endif %}
+      {% if driver.confirmed_at %} on {{ driver.confirmed_at.strftime('%d %b %Y %H:%M') }}{% endif %}.
+      {% if driver.state_note %}<br>Note: {{ driver.state_note }}{% endif %}
+      {% if driver.name_pending %}<br><strong>Name not captured yet</strong> - add it with Edit Profile.{% endif %}
+      No unknown-driver alerts are raised for this driver.
+    </div></div>
+    {% endif %}
+    <div class="profile-actions">
+      {% if driver.state == 'UNIDENTIFIED' and not driver.is_deleted and perms.can_review_unidentified %}
+      <a class="btn btn-primary btn-sm" href="/unidentified?state=UNIDENTIFIED#{{ driver.driver_id }}:confirm">Confirm as legitimate…</a>
+      <a class="btn btn-secondary btn-sm" href="/unidentified?state=UNIDENTIFIED#{{ driver.driver_id }}">Review identity</a>
+      {% endif %}
+      {% if driver.state in ('UNIDENTIFIED', 'AUTO_ENROLLED') and not driver.is_deleted and perms.can_enroll_drivers %}
+      <a class="btn btn-primary btn-sm" href="/enroll?promote={{ driver.driver_id }}">Complete full enrollment</a>
+      {% endif %}
+      {% if (driver.trusttrack_sync_pending or not driver.trusttrack_id) and not pending_actions and perms.can_review_unidentified %}
+      <button class="btn btn-secondary btn-sm" onclick="ttSync()">↻ Sync to Trust Track</button>
+      {% endif %}
+      {% if perms.can_modify_driver %}
+      <button class="btn btn-secondary btn-sm" onclick="toggleEditPanel()">✎ Edit Profile</button>
+      {% endif %}
+      {% if perms.can_change_driver_status %}
+      <button class="btn btn-secondary btn-sm" onclick="toggleStatus({{ driver.id }})">
+        {% if driver.is_deleted %}Restore{% else %}Mark deleted{% endif %}
+      </button>
+      {% endif %}
+      {% if perms.can_export_drivers %}
+      <div class="export-dropdown">
+        <button class="btn btn-secondary btn-sm" onclick="toggleExportMenu(event)">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Export ▾
+        </button>
+        <div class="export-menu" id="exportMenu">
+          <div class="export-item" onclick="exportFullZip()">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export Full Package (.zip)
+          </div>
+          <div class="export-item" onclick="exportCSV()">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Export Info as CSV
+          </div>
+          <div class="export-item" onclick="downloadPhotos()">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Download Photos Only
+          </div>
+          <div class="export-item" onclick="printProfile()">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print Profile
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      {% if perms.can_delete_drivers %}
+      <button class="btn btn-danger btn-sm" onclick="deleteDriver({{ driver.id }})">🗑 Delete permanently</button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if state_history %}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-body">
+    <div class="section-title">Enrollment history</div>
+    <table style="width:100%;font-size:12px;border-collapse:collapse;">
+      {% for h in state_history %}
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:6px 0;width:140px;color:var(--text-dim);">{{ h.changed_at.strftime('%d %b %Y %H:%M') if h.changed_at }}</td>
+        {% set _lbl = {'FULLY_ENROLLED': 'Fully Enrolled', 'AUTO_ENROLLED': 'Auto-enrolled', 'UNIDENTIFIED': 'Unidentified',
+                       'REJECTED': 'Unidentified', 'EXPIRED': 'Unidentified', 'MERGED': 'Deleted (merged)'} %}
+        <td style="padding:6px 8px;">{{ _lbl.get(h.from_state, '—') if h.from_state else '—' }} → <strong>{{ _lbl.get(h.to_state, h.to_state) }}</strong></td>
+        <td style="padding:6px 8px;color:var(--text-dim);">{{ h.changed_by or '' }}</td>
+        <td style="padding:6px 0;color:var(--text-dim);">{{ h.note or '' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Edit Panel -->
+{% if perms.can_modify_driver %}
+<div class="edit-panel" id="editPanel">
+  <div class="section-title">Edit Driver Information</div>
+  <div class="edit-grid">
+    <div class="form-group">
+      <label class="form-label">First Name</label>
+      <input class="form-control" id="edit_first_name" value="{{ driver.first_name }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Last Name</label>
+      <input class="form-control" id="edit_last_name" value="{{ driver.last_name }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-control" id="edit_email" value="{{ driver.email or '' }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Phone</label>
+      <input class="form-control" id="edit_phone" value="{{ driver.phone or '' }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <select class="form-control" id="edit_role">
+        <option value="Driver" {% if driver.role=='Driver' %}selected{% endif %}>Driver</option>
+        <option value="Mechanic" {% if driver.role=='Mechanic' %}selected{% endif %}>Mechanic</option>
+        <option value="Operations" {% if driver.role=='Operations' %}selected{% endif %}>Operations</option>
+      </select>
+    </div>
+    {% if perms.can_change_driver_status %}
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-control" id="edit_status">
+        <option value="active" {% if not driver.is_deleted %}selected{% endif %}>Active</option>
+        <option value="deleted" {% if driver.is_deleted %}selected{% endif %}>Deleted</option>
+      </select>
+    </div>
+    {% endif %}
+  </div>
+  <div style="display:flex;gap:10px;margin-top:8px;">
+    <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+    <button class="btn btn-secondary" onclick="toggleEditPanel()">Cancel</button>
+  </div>
+</div>
+{% endif %}
+
+<!-- Main Grid -->
+<div style="display:grid;grid-template-columns:1fr 1.4fr;gap:20px;">
+  <div style="display:flex;flex-direction:column;gap:20px;">
+
+    <!-- Driver Info -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Driver Information</span>
+        {% if perms.can_modify_driver %}
+        <button class="btn btn-secondary btn-sm" onclick="toggleEditPanel()">✎ Edit</button>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="info-grid">
+          <div><div class="info-label">First Name</div><div class="info-value" id="disp_first_name">{{ driver.first_name }}</div></div>
+          <div><div class="info-label">Last Name</div><div class="info-value" id="disp_last_name">{{ driver.last_name }}</div></div>
+          <div><div class="info-label">Email</div><div class="info-value" id="disp_email">{{ driver.email or '—' }}</div></div>
+          <div><div class="info-label">Phone</div><div class="info-value" id="disp_phone">{{ driver.phone or '—' }}</div></div>
+          <div><div class="info-label">Role</div><div class="info-value" id="disp_role">{{ driver.role or '—' }}</div></div>
+          <div><div class="info-label">Face Samples</div><div class="info-value" style="color:var(--accent);" id="disp_photo_count">{{ driver.photo_count }}</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Additional Information (Custom Fields) -->
+    <div class="card" id="customFieldsCard">
+      <div class="card-header">
+        <span class="card-title">Additional Information</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          {% if perms.can_modify_driver %}
+          <button class="btn btn-secondary btn-sm" id="cfEditBtn" onclick="toggleCfEdit()">✎ Edit</button>
+          {% endif %}
+          <button class="btn btn-primary btn-sm"   id="cfSaveBtn"   onclick="saveCfValues()" style="display:none;">Save</button>
+          <button class="btn btn-secondary btn-sm" id="cfCancelBtn" onclick="cancelCfEdit()" style="display:none;">Cancel</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0 20px;">
+        {% if custom_fields %}
+          {% for cf in custom_fields %}
+          <div class="cf-row" data-field-id="{{ cf.id }}" data-field-type="{{ cf.field_type }}">
+            <div class="cf-label">
+              {{ cf.name }}{% if cf.is_required %}<span class="cf-required-star">*</span>{% endif %}
+            </div>
+            <div class="cf-value {% if not cf.current_value %}cf-empty{% endif %}" id="cf-disp-{{ cf.id }}">
+              {% if cf.current_value %}
+                {% if cf.field_type == 'boolean' %}
+                  {% if cf.current_value == 'true' %}✓ Yes{% else %}✗ No{% endif %}
+                {% else %}
+                  {{ cf.current_value }}
+                {% endif %}
+              {% else %}—{% endif %}
+            </div>
+
+            {% if cf.field_type == 'boolean' %}
+            <select class="cf-edit-input" id="cf-input-{{ cf.id }}">
+              <option value="">— Select —</option>
+              <option value="true"  {% if cf.current_value == 'true'  %}selected{% endif %}>Yes</option>
+              <option value="false" {% if cf.current_value == 'false' %}selected{% endif %}>No</option>
+            </select>
+            {% elif cf.field_type == 'single_select' %}
+            <select class="cf-edit-input" id="cf-input-{{ cf.id }}">
+              <option value="">— Select —</option>
+              {% for opt in cf.options_list %}
+              <option value="{{ opt }}" {% if cf.current_value == opt %}selected{% endif %}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+            {% elif cf.field_type == 'multi_select' %}
+            <select class="cf-edit-input" id="cf-input-{{ cf.id }}" multiple>
+              {% set selected_vals = cf.current_value.split(',') if cf.current_value else [] %}
+              {% for opt in cf.options_list %}
+              <option value="{{ opt }}" {% if opt in selected_vals %}selected{% endif %}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+            {% elif cf.field_type == 'number' %}
+            <input type="number" class="cf-edit-input" id="cf-input-{{ cf.id }}" value="{{ cf.current_value }}">
+            {% elif cf.field_type == 'date' %}
+            <input type="date" class="cf-edit-input" id="cf-input-{{ cf.id }}" value="{{ cf.current_value }}">
+            {% else %}
+            <input type="text" class="cf-edit-input" id="cf-input-{{ cf.id }}" value="{{ cf.current_value }}" placeholder="Enter {{ cf.name }}">
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="cf-no-fields">
+            No additional fields configured.
+            <a href="/users#tab-custom-fields" style="color:var(--accent);margin-left:4px;">Add fields in Settings</a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Face Photos -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Face Photos</span>
+        <span class="badge badge-info" id="photoCountBadge">{{ driver.photo_count }} photos</span>
+      </div>
+      <div class="card-body" style="padding-top:12px;">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">{% if perms.can_modify_driver %}Click a photo to view / set as profile. Hover to remove.{% else %}Click a photo to view it.{% endif %}</div>
+        <div class="photos-grid{% if not perms.can_modify_driver %} read-only{% endif %}" id="photosGrid">
+          {% if perms.can_modify_driver %}
+          <div class="add-photo-tile" onclick="document.getElementById('addPhotosInput').click()" title="Add photos">+</div>
+          {% endif %}
+        </div>
+        {% if perms.can_modify_driver %}
+        <input type="file" id="addPhotosInput" accept="image/*" multiple style="display:none" onchange="addPhotos(this)">
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('addPhotosInput').click()">+ Add Photos</button>
+          <button class="btn btn-secondary btn-sm" onclick="recomputeEmbeddings()">↺ Recompute Face Data</button>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recognition Events -->
+  <div class="card" style="height:fit-content;">
+    <div class="card-header">
+      <span class="card-title">Recognition History</span>
+      <span class="badge badge-info">{{ events|length }} events</span>
+    </div>
+    {% if events %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Video</th><th>Frame</th><th>Confidence</th><th>Date</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for event in events %}
+          <tr>
+            <td style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim);" title="{{ event.video_filename }}">{{ event.video_filename }}</td>
+            <td style="font-size:12px;">#{{ event.frame_number }}</td>
+            <td>
+              {% set pct = (event.confidence * 100)|round|int if event.confidence else 0 %}
+              <span style="font-size:12px;color:{% if pct > 70 %}var(--accent){% elif pct > 50 %}var(--warning){% else %}var(--danger){% endif %};">{{ pct }}%</span>
+              <div class="conf-bar"><div class="conf-fill" style="width:{{ pct }}%;background:{% if pct > 70 %}var(--accent){% elif pct > 50 %}var(--warning){% else %}var(--danger){% endif %};"></div></div>
+            </td>
+            <td style="font-size:11px;color:var(--text-dim);">{{ event.timestamp.strftime('%d %b %y %H:%M') if event.timestamp else '—' }}</td>
+            <td>
+              {% if event.status == 'identified' %}<span class="badge badge-success">{{ event.status }}</span>
+              {% elif event.status == 'unknown' %}<span class="badge badge-danger">{{ event.status }}</span>
+              {% else %}<span class="badge badge-warning">{{ event.status }}</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding:48px 24px;text-align:center;color:var(--text-muted);">
+      <div style="font-size:36px;margin-bottom:12px;">📹</div>
+      <div style="font-size:13px;">No recognition events yet.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Photo Lightbox Modal ── -->
+<div class="lightbox-overlay" id="photoLightbox" onclick="closeLightboxOnBackdrop(event)">
+  <div class="lightbox-img-wrap">
+    <button class="lightbox-close" onclick="closeLightbox()" title="Close">✕</button>
+    <button class="lightbox-nav prev" id="lbPrev" onclick="lightboxNav(-1)">&#8249;</button>
+    <img class="lightbox-img" id="lightboxImg" src="" alt="photo">
+    <div class="lightbox-profile-badge" id="lightboxProfileBadge">CURRENT PROFILE</div>
+    <button class="lightbox-nav next" id="lbNext" onclick="lightboxNav(1)">&#8250;</button>
+  </div>
+  <div class="lightbox-actions">
+    {% if perms.can_modify_driver %}
+    <button class="lightbox-btn lightbox-btn-primary" id="lbSetProfileBtn" onclick="lightboxSetProfile()">⭐ Set as Profile Photo</button>
+    <button class="lightbox-btn lightbox-btn-danger"  id="lbRemoveBtn"     onclick="lightboxRemove()">🗑 Remove</button>
+    {% endif %}
+    <span class="lightbox-counter" id="lbCounter"></span>
+    <button class="lightbox-btn lightbox-btn-secondary" onclick="closeLightbox()">Close</button>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DRIVER_ID    = "{{ driver.driver_id }}";
+const DRIVER_DB_ID = {{ driver.id }};
+const CAN_MODIFY   = {{ 'true' if perms.can_modify_driver else 'false' }};
+
+// ── Photos ────────────────────────────────────────────────────────────────────
+let _allPhotos = [];   // kept in sync on every loadPhotos() call
+
+document.addEventListener('DOMContentLoaded', loadPhotos);
+
+function loadPhotos() {
+  fetch(`/api/drivers/${DRIVER_ID}/photos`)
+    .then(r => r.json())
+    .then(data => {
+      _allPhotos = data.photos || [];
+      const grid    = document.getElementById('photosGrid');
+      grid.querySelectorAll('.photo-thumb').forEach(t => t.remove());
+      const addTile = grid.querySelector('.add-photo-tile');
+      _allPhotos.forEach(p => {
+        const div = document.createElement('div');
+        div.className  = 'photo-thumb' + (p.is_profile ? ' is-profile' : '');
+        div.dataset.key = p.key;
+        div.innerHTML   = `<img src="${p.url}" loading="lazy" alt="face photo">
+          ${CAN_MODIFY ? `<button class="remove-btn" onclick="removePhoto('${p.key}',event)">✕</button>` : ''}
+          ${p.is_profile ? '<div class="profile-badge">PROFILE</div>' : ''}`;
+        div.addEventListener('click', e => {
+          if (!e.target.classList.contains('remove-btn')) openLightbox(p.key);
+        });
+        grid.insertBefore(div, addTile);
+      });
+      updatePhotoCount(_allPhotos.length);
+    }).catch(() => {});
+}
+
+function updatePhotoCount(n) {
+  document.getElementById('photoCountBadge').textContent = `${n} photos`;
+  document.getElementById('disp_photo_count').textContent = n;
+}
+
+function addPhotos(input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  showLoader(`Uploading ${files.length} photo(s)...`);
+  const fd = new FormData();
+  files.forEach(f => fd.append('photos', f));
+  fetch(`/api/drivers/${DRIVER_ID}/photos`, { method:'POST', body:fd })
+    .then(r => r.json())
+    .then(data => {
+      hideLoader();
+      if(data.error){ showToast(data.error,'error'); return; }
+      if(data.added === 0){ showToast('No valid photos processed — ensure images are JPG/PNG','error'); return; }
+      showToast(`${data.added} photo(s) added successfully`,'success');
+      loadPhotos();
+    })
+    .catch(() => { hideLoader(); showToast('Upload failed — check your connection','error'); });
+  input.value = '';
+}
+
+function removePhoto(key, e) {
+  e.stopPropagation();
+  if (!confirm('Remove this photo?')) return;
+  fetch(`/api/drivers/${DRIVER_ID}/photos`, {
+    method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key})
+  }).then(r=>r.json()).then(data => {
+    if(data.error){showToast(data.error,'error');return;}
+    showToast('Photo removed','success'); closeLightbox(); loadPhotos();
+  });
+}
+
+function setProfilePhoto(key) {
+  fetch(`/api/drivers/${DRIVER_ID}/profile-photo`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key})
+  }).then(r=>r.json()).then(data => {
+    if(data.error){showToast(data.error,'error');return;}
+    const av = document.getElementById('profileAvatar');
+    if(av && av.tagName==='IMG') av.src = data.url+'?t='+Date.now();
+    showToast('Profile photo updated','success');
+    loadPhotos();
+  });
+}
+
+function uploadProfilePhoto(input) {
+  const file = input.files[0]; if(!file) return;
+  const fd = new FormData(); fd.append('photo', file);
+  showLoader('Updating profile photo...');
+  fetch(`/api/drivers/${DRIVER_ID}/profile-photo-upload`, {method:'POST',body:fd})
+    .then(r=>r.json()).then(data => {
+      hideLoader();
+      if(data.error){showToast(data.error,'error');return;}
+      const av = document.getElementById('profileAvatar');
+      if(av && av.tagName==='IMG') av.src = data.url+'?t='+Date.now();
+      showToast('Profile photo updated','success');
+    }).catch(()=>{hideLoader();showToast('Upload failed','error');});
+}
+
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+let _lbIndex = 0;
+
+function openLightbox(key) {
+  const idx = _allPhotos.findIndex(p => p.key === key);
+  if (idx === -1) return;
+  _lbIndex = idx;
+  _renderLightbox();
+  document.getElementById('photoLightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function openProfileLightbox() {
+  const idx = _allPhotos.findIndex(p => p.is_profile);
+  if (idx !== -1) { openLightbox(_allPhotos[idx].key); }
+}
+
+function closeLightbox() {
+  document.getElementById('photoLightbox').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function closeLightboxOnBackdrop(e) {
+  if (e.target === document.getElementById('photoLightbox')) closeLightbox();
+}
+
+function lightboxNav(dir) {
+  if (!_allPhotos.length) return;
+  _lbIndex = (_lbIndex + dir + _allPhotos.length) % _allPhotos.length;
+  _renderLightbox();
+}
+
+function _renderLightbox() {
+  const p = _allPhotos[_lbIndex]; if (!p) return;
+  document.getElementById('lightboxImg').src = p.url + '?t=' + Date.now();
+  document.getElementById('lightboxProfileBadge').classList.toggle('visible', !!p.is_profile);
+  const setBtn = document.getElementById('lbSetProfileBtn');
+  if (setBtn) setBtn.style.display = p.is_profile ? 'none' : '';
+  document.getElementById('lbCounter').textContent = `${_lbIndex + 1} / ${_allPhotos.length}`;
+  document.getElementById('lbPrev').style.display = _allPhotos.length > 1 ? '' : 'none';
+  document.getElementById('lbNext').style.display = _allPhotos.length > 1 ? '' : 'none';
+}
+
+function lightboxSetProfile() {
+  const p = _allPhotos[_lbIndex]; if (!p) return;
+  setProfilePhoto(p.key);
+  // Optimistic update
+  _allPhotos.forEach(x => x.is_profile = false);
+  p.is_profile = true;
+  _renderLightbox();
+}
+
+function lightboxRemove() {
+  const p = _allPhotos[_lbIndex]; if (!p) return;
+  if (!confirm('Remove this photo?')) return;
+  fetch(`/api/drivers/${DRIVER_ID}/photos`, {
+    method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key: p.key})
+  }).then(r=>r.json()).then(data => {
+    if(data.error){showToast(data.error,'error');return;}
+    showToast('Photo removed','success'); closeLightbox(); loadPhotos();
+  }).catch(()=>showToast('Remove failed','error'));
+}
+
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('photoLightbox').classList.contains('open')) return;
+  if (e.key === 'Escape')     closeLightbox();
+  if (e.key === 'ArrowLeft')  lightboxNav(-1);
+  if (e.key === 'ArrowRight') lightboxNav(1);
+});
+
+// ── Edit Panel ────────────────────────────────────────────────────────────────
+function toggleEditPanel() {
+  const panel = document.getElementById('editPanel');
+  if (!panel) return;
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+// /drivers/<id>#edit (the "Edit" button on the driver list) opens the edit form
+document.addEventListener('DOMContentLoaded', () => {
+  if (location.hash === '#edit' && CAN_MODIFY) toggleEditPanel();
+});
+
+function saveEdit() {
+  const first = document.getElementById('edit_first_name').value.trim();
+  const last  = document.getElementById('edit_last_name').value.trim();
+  if (!first || !last) { showToast('First and last name are required','error'); return; }
+
+  const payload = {
+    first_name: first,
+    last_name:  last,
+    email:      document.getElementById('edit_email').value.trim(),
+    phone:      document.getElementById('edit_phone').value.trim(),
+    role:       document.getElementById('edit_role').value,
+  };
+  const statusSel = document.getElementById('edit_status');
+  if (statusSel) payload.status = statusSel.value;
+
+  showLoader('Saving...');
+  fetch(`/api/drivers/${DRIVER_DB_ID}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(r => {
+    hideLoader();
+    if (r.status === 403) {
+      r.json().then(d => showToast(d.error || 'Permission denied — contact an admin', 'error'))
+              .catch(() => showToast('Permission denied — contact an admin', 'error'));
+      return null;
+    }
+    if (r.status === 404) { showToast('Driver not found', 'error'); return null; }
+    if (!r.ok) { showToast(`Server error (${r.status}) — check server logs`, 'error'); return null; }
+    return r.json();
+  })
+  .then(data => {
+    if (!data) return;
+    if (data.error) { showToast(data.error, 'error'); return; }
+    // Update the display fields inline
+    document.getElementById('disp_first_name').textContent = payload.first_name;
+    document.getElementById('disp_last_name').textContent  = payload.last_name;
+    document.getElementById('disp_email').textContent      = payload.email || '—';
+    document.getElementById('disp_phone').textContent      = payload.phone || '—';
+    document.getElementById('disp_role').textContent       = payload.role  || '—';
+    document.querySelector('.profile-name').textContent    = `${payload.first_name} ${payload.last_name}`;
+    toggleEditPanel();
+    showToast('Driver information updated', 'success');
+  })
+  .catch(err => {
+    hideLoader();
+    showToast('Network error — could not reach server', 'error');
+    console.error('[saveEdit]', err);
+  });
+}
+
+// ── Status / Delete ───────────────────────────────────────────────────────────
+function toggleStatus(id) {
+  fetch(`/api/drivers/${id}/toggle`,{method:'POST'})
+    .then(r=>{if(r.status===403){showToast('Permission denied','error');return null;} return r.json();})
+    .then(data=>{ if(data&&data.success){showToast(data.status==='active'?'Driver restored (Active)':'Driver marked Deleted','success'); setTimeout(()=>location.reload(),800);} })
+    .catch(()=>showToast('Network error','error'));
+}
+
+function deleteDriver(id) {
+  if(!confirm('Permanently delete this driver and all their face data?')) return;
+  fetch(`/api/drivers/${id}`,{method:'DELETE'})
+    .then(r=>{if(r.status===403){showToast('Permission denied','error');return null;} return r.json();})
+    .then(data=>{ if(data&&data.success){showToast('Driver deleted','success'); setTimeout(()=>window.location.href='/drivers',800);} })
+    .catch(()=>showToast('Network error','error'));
+}
+
+// ── Recompute ─────────────────────────────────────────────────────────────────
+function recomputeEmbeddings() {
+  if(!confirm('Recompute face recognition data from all current photos?')) return;
+  showLoader('Recomputing face embeddings...');
+  fetch(`/api/drivers/${DRIVER_ID}/recompute`,{method:'POST'}).then(r=>r.json()).then(data=>{
+    hideLoader();
+    if(data.error){showToast(data.error,'error');return;}
+    showToast(`Face data updated — ${data.embeddings} embeddings from ${data.photos} photo(s)`,'success'); loadPhotos();
+  }).catch(()=>{hideLoader();showToast('Recompute failed','error');});
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function toggleExportMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('exportMenu');
+  const rect = e.currentTarget.getBoundingClientRect();
+  menu.style.top  = (rect.bottom + window.scrollY + 6) + 'px';
+  menu.classList.toggle('open');
+  requestAnimationFrame(() => {
+    menu.style.left = (rect.right + window.scrollX - menu.offsetWidth) + 'px';
+  });
+}
+document.addEventListener('click', () => document.getElementById('exportMenu').classList.remove('open'));
+
+const driverData = {
+  driver_id:"{{ driver.driver_id }}", first_name:"{{ driver.first_name }}", last_name:"{{ driver.last_name }}",
+  email:"{{ driver.email or '' }}", phone:"{{ driver.phone or '' }}", role:"{{ driver.role or '' }}",
+  status:"{{ driver.status_label }}", enrollment_state:"{{ driver.state_label }}", enrollment_date:"{{ driver.enrollment_date.strftime('%Y-%m-%d %H:%M') if driver.enrollment_date else '' }}",
+  photo_count:{{ driver.photo_count }},
+};
+
+function exportFullZip() {
+  showToast('Preparing export package…','success');
+  window.location.href = `/api/drivers/${DRIVER_ID}/export`;
+}
+function exportCSV() {
+  const headers = ['Driver ID','First Name','Last Name','Email','Phone','Role','Status','Enrollment State','Enrollment Date','Photo Count'];
+  const values  = [driverData.driver_id, driverData.first_name, driverData.last_name, driverData.email,
+    driverData.phone, driverData.role, driverData.status, driverData.enrollment_state, driverData.enrollment_date, driverData.photo_count];
+  const csv  = [headers, values].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a    = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `${driverData.driver_id}.csv`; a.click();
+}
+function downloadPhotos() { showToast('Preparing photos download…','success'); window.location.href=`/api/drivers/${DRIVER_ID}/photos/download`; }
+function printProfile()   { window.print(); }
+
+// ── Custom Fields ─────────────────────────────────────────────────────────────
+let _cfEditing = false;
+
+function toggleCfEdit() {
+  _cfEditing = true;
+  document.querySelectorAll('.cf-row').forEach(row => row.classList.add('cf-editing'));
+  document.getElementById('cfEditBtn').style.display   = 'none';
+  document.getElementById('cfSaveBtn').style.display   = '';
+  document.getElementById('cfCancelBtn').style.display = '';
+}
+
+function cancelCfEdit() {
+  _cfEditing = false;
+  document.querySelectorAll('.cf-row').forEach(row => row.classList.remove('cf-editing'));
+  document.getElementById('cfEditBtn').style.display   = '';
+  document.getElementById('cfSaveBtn').style.display   = 'none';
+  document.getElementById('cfCancelBtn').style.display = 'none';
+}
+
+async function saveCfValues() {
+  const values = {};
+  document.querySelectorAll('.cf-row').forEach(row => {
+    const fieldId   = row.dataset.fieldId;
+    const fieldType = row.dataset.fieldType;
+    const input     = document.getElementById(`cf-input-${fieldId}`);
+    if (!input) return;
+    if (fieldType === 'multi_select') {
+      values[fieldId] = Array.from(input.selectedOptions).map(o => o.value).join(',');
+    } else {
+      values[fieldId] = input.value;
+    }
+  });
+
+  try {
+    const res  = await fetch(`/api/drivers/${DRIVER_ID}/custom-fields`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    });
+    if (res.status === 403) { showToast('Permission denied','error'); return; }
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); return; }
+
+    // Update display values in-place without a page reload
+    document.querySelectorAll('.cf-row').forEach(row => {
+      const fieldId   = row.dataset.fieldId;
+      const fieldType = row.dataset.fieldType;
+      const input     = document.getElementById(`cf-input-${fieldId}`);
+      const disp      = document.getElementById(`cf-disp-${fieldId}`);
+      if (!input || !disp) return;
+      let displayVal = '';
+      if (fieldType === 'multi_select') {
+        displayVal = Array.from(input.selectedOptions).map(o => o.value).join(', ');
+      } else if (fieldType === 'boolean') {
+        displayVal = input.value === 'true' ? '✓ Yes' : input.value === 'false' ? '✗ No' : '';
+      } else {
+        displayVal = input.value;
+      }
+      disp.textContent = displayVal || '—';
+      disp.classList.toggle('cf-empty', !displayVal);
+    });
+
+    cancelCfEdit();
+    showToast('Additional information saved','success');
+  } catch(e) {
+    showToast('Save failed — check your connection','error');
+  }
+}
+
+async function ttSync() {
+  try {
+    const r = await fetch('/api/drivers/{{ driver.driver_id }}/trusttrack-sync', {method: 'POST'});
+    const d = await r.json();
+    showToast(d.success ? 'Queued - the recognition service syncs it to Trust Track shortly' : (d.error || 'Failed'), d.success ? 'success' : 'error');
+    if (d.success) setTimeout(() => location.reload(), 800);
+  } catch (e) { showToast('Network error', 'error'); }
+}
+</script>
+{% endblock %}

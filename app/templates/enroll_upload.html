@@ -1,0 +1,231 @@
+{% extends 'base.html' %}
+{% block title %}Upload Enrollment — Edge Telematics{% endblock %}
+{% block page_title %}Upload Enrollment{% endblock %}
+{% block page_subtitle %}Register driver from existing photos{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('main.enroll') }}" class="btn btn-secondary">← Back</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 48px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg-2);
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--amber);
+    background: var(--amber-glow);
+  }
+  .preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .preview-item {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+  }
+  .preview-item img { width:100%; height:100%; object-fit:cover; }
+  .preview-item .remove-btn {
+    position: absolute;
+    top: 4px; right: 4px;
+    width: 20px; height: 20px;
+    background: rgba(231,76,60,0.8);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 11px;
+    color: #fff;
+    border: none;
+    line-height: 1;
+  }
+  .preview-item.ok { border-color: var(--green); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:700px;">
+  <div id="enroll-form">
+    <div class="card mb-3">
+      <div class="card-header"><span class="card-title">Driver Information</span></div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>First Name *</label>
+            <input type="text" id="first_name" placeholder="e.g. James" required />
+          </div>
+          <div class="form-group">
+            <label>Last Name *</label>
+            <input type="text" id="last_name" placeholder="e.g. Wilson" required />
+          </div>
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="email" placeholder="driver@fleet.com" />
+          </div>
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="tel" id="phone" placeholder="+27 71 000 0000" />
+          </div>
+          <div class="form-group">
+            <label>Role</label>
+            <select id="role">
+              <option value="Driver" selected>Driver</option>
+              <option value="Mechanic">Mechanic</option>
+              <option value="Operations">Operations</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="notes" placeholder="Additional notes (optional)"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header">
+        <span class="card-title">Upload Photos</span>
+        <span class="text-muted" style="font-size:12px;" id="photo-count-label">0 photos selected</span>
+      </div>
+      <div class="card-body">
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <svg style="width:48px;height:48px;color:var(--amber);opacity:0.7;margin-bottom:14px;" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+          <div style="font-family:var(--font-display);font-size:17px;font-weight:600;margin-bottom:6px;">Drop photos here or click to browse</div>
+          <div style="font-size:12px;color:var(--text-3);">JPG, PNG • Minimum 3 photos required • Max 20 photos</div>
+        </div>
+        <input type="file" id="file-input" multiple accept="image/jpeg,image/png" style="display:none;" onchange="handleFiles(this.files)"/>
+
+        <div class="preview-grid" id="preview-grid"></div>
+
+        <div class="alert alert-info mt-2" style="font-size:12px; margin-bottom:0;">
+          <svg style="width:14px;height:14px;flex-shrink:0;" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+          For best results: clear front-facing photos, good lighting, no sunglasses. Include varied angles if possible.
+        </div>
+      </div>
+    </div>
+
+    <div id="error-msg" class="alert alert-error hidden"></div>
+
+    <button class="btn btn-primary btn-lg" onclick="submitUpload()" id="btn-submit">
+      ✓ Enroll Driver
+    </button>
+  </div>
+
+  <!-- Success -->
+  <div id="success-panel" class="hidden" style="text-align:center;padding:60px 0;">
+    <div style="width:80px;height:80px;background:rgba(46,204,113,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;border:2px solid var(--green);">
+      <svg style="width:40px;height:40px;color:var(--green);" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+    </div>
+    <div style="font-family:var(--font-display);font-size:28px;font-weight:800;color:var(--green);margin-bottom:8px;">ENROLLMENT COMPLETE</div>
+    <div style="color:var(--text-3);margin-bottom:6px;">Driver successfully registered.</div>
+    <div style="font-family:var(--font-mono);font-size:18px;color:var(--amber);margin:16px 0;" id="success-id">—</div>
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;">
+      <a href="{{ url_for('main.drivers') }}" class="btn btn-secondary">View All Drivers</a>
+      <a href="{{ url_for('main.enroll_upload') }}" class="btn btn-primary">Enroll Another</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedFiles = [];
+
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+
+function handleFiles(files) {
+  const newFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+  const remaining = 20 - selectedFiles.length;
+  newFiles.slice(0, remaining).forEach(f => {
+    selectedFiles.push(f);
+    addPreview(f, selectedFiles.length - 1);
+  });
+  updateCount();
+}
+
+function addPreview(file, idx) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wrap = document.createElement('div');
+    wrap.className = 'preview-item ok';
+    wrap.id = `preview-${idx}`;
+    wrap.innerHTML = `<img src="${e.target.result}" /><button class="remove-btn" onclick="removeFile(${idx})">✕</button>`;
+    document.getElementById('preview-grid').appendChild(wrap);
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeFile(idx) {
+  selectedFiles[idx] = null;
+  const el = document.getElementById(`preview-${idx}`);
+  if (el) el.remove();
+  updateCount();
+}
+
+function updateCount() {
+  const count = selectedFiles.filter(f => f !== null).length;
+  document.getElementById('photo-count-label').textContent = `${count} photo${count !== 1 ? 's' : ''} selected`;
+}
+
+async function submitUpload() {
+  const fn = document.getElementById('first_name').value.trim();
+  const ln = document.getElementById('last_name').value.trim();
+  const errEl = document.getElementById('error-msg');
+  errEl.classList.add('hidden');
+
+  if (!fn || !ln) { showError('First and last name are required.'); return; }
+  const validFiles = selectedFiles.filter(f => f !== null);
+  if (validFiles.length < 3) { showError('Please upload at least 3 photos.'); return; }
+
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true;
+  btn.textContent = 'Enrolling…';
+
+  const formData = new FormData();
+  formData.append('first_name', fn);
+  formData.append('last_name', ln);
+  formData.append('email', document.getElementById('email').value.trim());
+  formData.append('phone', document.getElementById('phone').value.trim());
+  formData.append('role', document.getElementById('role').value);
+  formData.append('notes', document.getElementById('notes').value.trim());
+  validFiles.forEach(f => formData.append('photos', f));
+
+  try {
+    const res = await fetch('/api/enroll/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('success-id').textContent = data.driver_code;
+      document.getElementById('enroll-form').classList.add('hidden');
+      document.getElementById('success-panel').classList.remove('hidden');
+    } else {
+      showError(data.error);
+      btn.disabled = false;
+      btn.textContent = '✓ Enroll Driver';
+    }
+  } catch(e) {
+    showError('Network error: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '✓ Enroll Driver';
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = '⚠ ' + msg;
+  el.classList.remove('hidden');
+  el.scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+{% endblock %}

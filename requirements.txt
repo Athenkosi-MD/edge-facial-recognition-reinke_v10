@@ -1,0 +1,17 @@
+gunicorn
+flask
+flask-sqlalchemy
+opencv-python-headless
+numpy
+insightface
+onnxruntime
+werkzeug
+python-dotenv
+scikit-learn
+Pillow
+psycopg2-binary
+psycopg[binary]
+boto3
+openpyxl
+requests
+python-dateutil

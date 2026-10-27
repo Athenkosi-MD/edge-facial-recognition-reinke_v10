@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}Reports – Edge Telematics{% endblock %}
+{% block page_title %}Driver Assignment Reports{% endblock %}
+{% block page_subtitle %}
+    {% if last_run %}Last synced {{ last_run.finished_at or last_run.started_at }} SAST — {{ last_run.trips_fetched }} trips fetched{% else %}No data loaded yet — run the pipeline to sync trips{% endif %}
+{% endblock %}
+
+{% block content %}
+{% set cur_role = session.get('role', '') %}
+
+<!-- ── KPI cards ───────────────────────────────────────────────────────── -->
+<div class="grid grid-4" style="margin-bottom:20px;">
+    <div class="stat-card accent">
+        <div class="stat-icon accent">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12.5" y="8" width="3" height="10"/><rect x="18" y="5" width="3" height="13"/></svg>
+        </div>
+        <div class="stat-label">Total Trips</div>
+        <div class="stat-value" id="kpiTotal">—</div>
+        <div class="stat-meta">In the current filter</div>
+    </div>
+    <div class="stat-card green">
+        <div class="stat-icon green">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <div class="stat-label">Driver Identified</div>
+        <div class="stat-value" id="kpiAssigned" style="color:var(--success);">—</div>
+        <div class="stat-meta" id="kpiAssignedMeta">—</div>
+    </div>
+    <div class="stat-card warn">
+        <div class="stat-icon warn">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="stat-label">Driver NOT Identified</div>
+        <div class="stat-value" id="kpiUnassigned" style="color:var(--danger);">—</div>
+        <div class="stat-meta" id="kpiUnassignedMeta">—</div>
+    </div>
+    <div class="stat-card blue">
+        <div class="stat-icon blue">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        </div>
+        <div class="stat-label">Excluded (Trailers)</div>
+        <div class="stat-value" id="kpiExcluded">—</div>
+        <div class="stat-meta" id="kpiExcludedMeta">Towed units, no driver expected</div>
+    </div>
+</div>
+
+<!-- ── Filters ─────────────────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-body" style="padding:18px 22px;">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+            <div style="min-width:180px;">
+                <label class="form-label">Vehicle</label>
+                <select class="form-control" id="fVehicle">
+                    <option value="">All vehicles</option>
+                    {% for v in vehicles %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+                </select>
+            </div>
+            <div style="min-width:180px;">
+                <label class="form-label">Driver</label>
+                <select class="form-control" id="fDriver">
+                    <option value="">All drivers</option>
+                    {% for d in drivers %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+                </select>
+            </div>
+            <div style="min-width:170px;">
+                <label class="form-label">Assignment Status</label>
+                <select class="form-control" id="fStatus">
+                    <option value="all">All trips</option>
+                    <option value="assigned">Trips with a driver</option>
+                    <option value="unassigned">Trips with no driver</option>
+                </select>
+            </div>
+            <div style="min-width:150px;">
+                <label class="form-label">From date</label>
+                <input type="date" class="form-control" id="fDateFrom">
+            </div>
+            <div style="min-width:150px;">
+                <label class="form-label">To date</label>
+                <input type="date" class="form-control" id="fDateTo">
+            </div>
+            <div style="flex:1;min-width:200px;">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-control" id="fSearch" placeholder="Vehicle, driver or location...">
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;flex-wrap:wrap;gap:10px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-dim);cursor:pointer;">
+                <input type="checkbox" id="fIncludeExcluded" style="width:15px;height:15px;">
+                Include trailers / towed units in the counts above
+            </label>
+            <div style="display:flex;gap:10px;">
+                <button class="btn btn-secondary" id="btnReset">Reset Filters</button>
+                <button class="btn btn-secondary" id="btnExportCsv">
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Export CSV
+                </button>
+                <button class="btn btn-primary" id="btnExportXlsx">
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Export Excel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Vehicles to Check ───────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Vehicles to Check</div>
+            <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">Ranked by trips with no driver identified — check cameras / the facial-recognition integration for these first</div>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Vehicle</th><th>Total Trips</th><th>Driver Identified</th>
+                    <th>Driver NOT Identified</th><th>% Not Identified</th><th>KM on Unmatched Trips</th>
+                </tr>
+            </thead>
+            <tbody id="vehiclesTableBody">
+                <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">Loading…</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ── Trip list ───────────────────────────────────────────────────────── -->
+<div class="card">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Trips</div>
+            <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;" id="tripsCountLabel">—</div>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Vehicle</th><th>Date</th><th>Start</th><th>End</th><th>Duration</th>
+                    <th>KM</th><th>Start Location</th><th>Driver</th><th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="tripsTableBody">
+                <tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">Loading…</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-top:1px solid var(--border-light);">
+        <div style="font-size:12px;color:var(--text-muted);" id="pageLabel">—</div>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-secondary btn-sm" id="btnPrev">Previous</button>
+            <button class="btn btn-secondary btn-sm" id="btnNext">Next</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+const perPage = 25;
+
+function currentFilters() {
+    return {
+        vehicle: document.getElementById('fVehicle').value,
+        driver: document.getElementById('fDriver').value,
+        status: document.getElementById('fStatus').value,
+        date_from: document.getElementById('fDateFrom').value,
+        date_to: document.getElementById('fDateTo').value,
+        search: document.getElementById('fSearch').value,
+        include_excluded: document.getElementById('fIncludeExcluded').checked ? '1' : '0',
+    };
+}
+
+function qs(params) {
+    return Object.entries(params).filter(([k, v]) => v !== '' && v !== undefined && v !== null)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+}
+
+function loadSummary() {
+    fetch('/api/reports/summary?' + qs(currentFilters()))
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('kpiTotal').textContent = d.total_trips.toLocaleString();
+            document.getElementById('kpiAssigned').textContent = d.assigned_count.toLocaleString();
+            document.getElementById('kpiAssignedMeta').textContent =
+                `${(d.assigned_pct * 100).toFixed(0)}% · ${d.assigned_km.toLocaleString()} km`;
+            document.getElementById('kpiUnassigned').textContent = d.unassigned_count.toLocaleString();
+            document.getElementById('kpiUnassignedMeta').textContent =
+                `${(d.unassigned_pct * 100).toFixed(0)}% · ${d.unassigned_km.toLocaleString()} km · ${d.unassigned_duration}`;
+            document.getElementById('kpiExcluded').textContent = d.excluded_count.toLocaleString();
+            document.getElementById('kpiExcludedMeta').textContent =
+                `${d.excluded_vehicles} vehicle(s), not counted above`;
+        });
+}
+
+function loadVehicles() {
+    fetch('/api/reports/vehicles?' + qs(currentFilters()))
+        .then(r => r.json())
+        .then(d => {
+            const body = document.getElementById('vehiclesTableBody');
+            if (!d.vehicles.length) {
+                body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">No vehicles match these filters.</td></tr>';
+                return;
+            }
+            body.innerHTML = d.vehicles.map(v => `
+                <tr style="${v.unassigned > 0 ? 'background:#fdeded;' : ''}">
+                    <td><strong>${v.vehicle}</strong></td>
+                    <td>${v.total_trips}</td>
+                    <td>${v.assigned}</td>
+                    <td>${v.unassigned}</td>
+                    <td>${(v.pct_unassigned * 100).toFixed(0)}%</td>
+                    <td>${v.unassigned_km.toLocaleString()} km</td>
+                </tr>`).join('');
+        });
+}
+
+function loadTrips() {
+    const params = Object.assign(currentFilters(), { page: currentPage, per_page: perPage });
+    fetch('/api/reports/trips?' + qs(params))
+        .then(r => r.json())
+        .then(d => {
+            const body = document.getElementById('tripsTableBody');
+            if (!d.rows.length) {
+                body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">No trips match these filters.</td></tr>';
+            } else {
+                body.innerHTML = d.rows.map(t => `
+                    <tr>
+                        <td><strong>${t.vehicle}</strong></td>
+                        <td>${t.start_time ? t.start_time.split(' ')[0] : ''}</td>
+                        <td>${t.start_time ? t.start_time.split(' ')[1] : ''}</td>
+                        <td>${t.end_time ? t.end_time.split(' ')[1] : ''}</td>
+                        <td>${t.duration_min !== null ? Math.round(t.duration_min) + ' min' : '—'}</td>
+                        <td>${t.km !== null ? t.km.toLocaleString() + ' km' : '—'}</td>
+                        <td>${t.start_zone_name || t.start_location || '<span style="color:var(--text-muted);">—</span>'}</td>
+                        <td>${t.driver_name || '<span style="color:var(--text-muted);">—</span>'}${t.driver_source === 'recognition'
+                            ? ' <span title="Not on the trip in Trust Track - this is the driver facial recognition saw in the vehicle during the trip" style="color:var(--text-muted);font-size:11px;">(facial recognition)</span>' : ''}</td>
+                        <td>${t.has_driver
+                            ? (t.driver_source === 'recognition'
+                                ? '<span class="badge badge-warning" title="Seen by facial recognition; not assigned in Trust Track for this trip">Identified (recognition)</span>'
+                                : '<span class="badge badge-success">Identified</span>')
+                            : '<span class="badge badge-danger">Not Identified</span>'}</td>
+                    </tr>`).join('');
+            }
+            document.getElementById('tripsCountLabel').textContent = `${d.total.toLocaleString()} trip(s) match the current filters`;
+            document.getElementById('pageLabel').textContent = `Page ${d.page} of ${d.pages}`;
+            document.getElementById('btnPrev').disabled = d.page <= 1;
+            document.getElementById('btnNext').disabled = d.page >= d.pages;
+        });
+}
+
+function refreshAll() {
+    currentPage = 1;
+    loadSummary();
+    loadVehicles();
+    loadTrips();
+}
+
+['fVehicle', 'fDriver', 'fStatus', 'fDateFrom', 'fDateTo', 'fIncludeExcluded'].forEach(id => {
+    document.getElementById(id).addEventListener('change', refreshAll);
+});
+let searchTimer;
+document.getElementById('fSearch').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(refreshAll, 350);
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+    document.getElementById('fVehicle').value = '';
+    document.getElementById('fDriver').value = '';
+    document.getElementById('fStatus').value = 'all';
+    document.getElementById('fDateFrom').value = '';
+    document.getElementById('fDateTo').value = '';
+    document.getElementById('fSearch').value = '';
+    document.getElementById('fIncludeExcluded').checked = false;
+    refreshAll();
+});
+
+document.getElementById('btnPrev').addEventListener('click', () => { if (currentPage > 1) { currentPage--; loadTrips(); } });
+document.getElementById('btnNext').addEventListener('click', () => { currentPage++; loadTrips(); });
+
+document.getElementById('btnExportCsv').addEventListener('click', () => {
+    window.location.href = '/api/reports/export?format=csv&' + qs(currentFilters());
+});
+document.getElementById('btnExportXlsx').addEventListener('click', () => {
+    window.location.href = '/api/reports/export?format=xlsx&' + qs(currentFilters());
+});
+
+refreshAll();
+</script>
+{% endblock %}

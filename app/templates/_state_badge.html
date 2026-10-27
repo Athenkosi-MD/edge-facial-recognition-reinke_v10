@@ -1,0 +1,6 @@
+{# Enrollment-state badge. Expects `d` (a Driver) in scope.
+   Enrollment states: Fully Enrolled, Auto-enrolled, Unidentified. #}
+{% set _st = d.state %}
+{% if _st == 'FULLY_ENROLLED' %}<span class="badge badge-info" title="Enrolled with photos in the web app">FULLY ENROLLED</span>
+{% elif _st == 'AUTO_ENROLLED' %}<span class="badge badge-success" title="Auto-enrolled by OCC from cab snapshots; complete full enrollment when possible">AUTO-ENROLLED</span>
+{% else %}<span class="badge badge-warning" title="Unknown or not authorized; alerts until OCC reviews it">UNIDENTIFIED</span>{% endif %}

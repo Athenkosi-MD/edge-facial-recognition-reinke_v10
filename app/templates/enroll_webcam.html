@@ -1,0 +1,483 @@
+{% extends 'base.html' %}
+{% block title %}Webcam Enrollment — Edge Telematics{% endblock %}
+{% block page_title %}Webcam Enrollment{% endblock %}
+{% block page_subtitle %}Live facial capture registration{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('main.enroll') }}" class="btn btn-secondary">← Back</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .step-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 32px;
+  }
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    font-size: 12px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-3);
+    position: relative;
+  }
+  .step.active { color: var(--amber); }
+  .step.done { color: var(--green); }
+  .step-num {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--bg-3);
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step.active .step-num { background: var(--amber); border-color: var(--amber); color: #fff; }
+  .step.done .step-num { background: var(--green); border-color: var(--green); color: #fff; }
+  .step-sep { flex: 1; height: 1px; background: var(--border); min-width: 30px; }
+
+  #video-container {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    aspect-ratio: 4/3;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+  }
+  #webcam, #annotated-img {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  #face-overlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 180px; height: 220px;
+    border: 2px dashed rgba(245,166,35,0.5);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  #capture-flash {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.8);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s;
+  }
+  .capture-thumb {
+    width: 64px; height: 64px;
+    border-radius: 6px;
+    object-fit: cover;
+    border: 2px solid var(--border);
+    transition: border-color 0.2s;
+  }
+  .capture-thumb.ok { border-color: var(--green); }
+  .quality-bar { margin-top: 4px; }
+  #countdown-ring {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 44px; height: 44px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Step Indicator -->
+<div class="step-indicator">
+  <div class="step" id="step-ind-1">
+    <div class="step-num">1</div>
+    Driver Info
+  </div>
+  <div class="step-sep"></div>
+  <div class="step" id="step-ind-2">
+    <div class="step-num">2</div>
+    Face Capture
+  </div>
+  <div class="step-sep"></div>
+  <div class="step" id="step-ind-3">
+    <div class="step-num">3</div>
+    Confirm
+  </div>
+  <div class="step-sep"></div>
+  <div class="step" id="step-ind-4">
+    <div class="step-num">4</div>
+    Complete
+  </div>
+</div>
+
+<!-- Step 1: Driver Info -->
+<div id="step-1">
+  <div style="max-width:600px;">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Driver Information</span></div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>First Name *</label>
+            <input type="text" id="first_name" placeholder="e.g. James" required />
+          </div>
+          <div class="form-group">
+            <label>Last Name *</label>
+            <input type="text" id="last_name" placeholder="e.g. Wilson" required />
+          </div>
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="email" placeholder="driver@fleet.com" />
+          </div>
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="tel" id="phone" placeholder="+27 71 000 0000" />
+          </div>
+          <div class="form-group">
+            <label>Role</label>
+            <select id="role">
+              <option value="Driver" selected>Driver</option>
+              <option value="Mechanic">Mechanic</option>
+              <option value="Operations">Operations</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="notes" placeholder="Additional notes (optional)"></textarea>
+        </div>
+        <button class="btn btn-primary btn-lg" onclick="goToCapture()">
+          Continue to Face Capture →
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Webcam Capture -->
+<div id="step-2" class="hidden">
+  <div style="display:grid;grid-template-columns:auto 1fr;gap:32px;align-items:start;max-width:900px;">
+    <div>
+      <!-- Camera -->
+      <div id="video-container">
+        <video id="webcam" autoplay muted playsinline></video>
+        <img id="annotated-img" class="hidden" />
+        <div id="face-overlay"></div>
+        <div id="capture-flash"></div>
+        <svg id="countdown-ring" viewBox="0 0 44 44" style="display:none;">
+          <circle cx="22" cy="22" r="18" fill="rgba(0,0,0,0.5)" stroke="none"/>
+          <text x="22" y="27" text-anchor="middle" fill="#f5a623" font-size="16" font-family="Barlow Condensed" font-weight="700" id="countdown-text">3</text>
+        </svg>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px;">
+        <button class="btn btn-primary" id="btn-capture" onclick="captureFrame()" style="flex:1;">
+          📷 Capture Frame
+        </button>
+        <button class="btn btn-secondary" id="btn-auto" onclick="toggleAuto()">
+          Auto
+        </button>
+      </div>
+      <div style="margin-top:8px; padding:10px; background:var(--bg-2); border-radius:6px; font-size:12px;">
+        <div id="capture-status" style="color:var(--text-3);">Align your face within the oval guide.</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:var(--font-display);font-size:16px;font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">
+        Captures: <span id="capture-count" class="text-amber">0</span> / 8
+      </div>
+      <div class="progress-bar-wrap mb-2">
+        <div class="progress-bar" id="capture-progress" style="width:0%"></div>
+      </div>
+      <div id="capture-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;"></div>
+
+      <div class="card mt-3" style="background:var(--bg-2);">
+        <div class="card-body">
+          <div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--amber);font-family:var(--font-display);font-weight:700;margin-bottom:10px;">Capture Guidance</div>
+          <div style="font-size:12px;color:var(--text-3);line-height:1.8;">
+            <div id="guide-1" style="color:var(--text-2);">① Face the camera directly</div>
+            <div id="guide-2">② Slight left turn</div>
+            <div id="guide-3">③ Slight right turn</div>
+            <div id="guide-4">④ Look slightly up</div>
+            <div id="guide-5">⑤ Look slightly down</div>
+            <div id="guide-6">⑥–⑧ Natural variations</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-lg mt-3" id="btn-proceed" onclick="goToConfirm()" disabled style="width:100%; justify-content:center;">
+        Proceed to Confirm →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3: Confirm -->
+<div id="step-3" class="hidden">
+  <div style="max-width:600px;">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Review &amp; Confirm</span></div>
+      <div class="card-body">
+        <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:20px;">
+          <div id="confirm-avatar" style="width:80px;height:80px;border-radius:8px;background:var(--bg-3);border:2px solid var(--amber);overflow:hidden;flex-shrink:0;">
+          </div>
+          <div>
+            <div style="font-family:var(--font-display);font-size:22px;font-weight:700;" id="confirm-name">—</div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:4px;" id="confirm-meta">—</div>
+          </div>
+        </div>
+        <div id="confirm-details" style="background:var(--bg-2);padding:14px;border-radius:6px;font-size:13px;line-height:2;margin-bottom:20px;"></div>
+        <div class="alert alert-warning">
+          <svg style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+          <div>Please verify the information above is correct before enrolling. Enrollment cannot be easily undone.</div>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <button class="btn btn-secondary" onclick="goBack()">← Edit</button>
+          <button class="btn btn-primary btn-lg" onclick="submitEnrollment()" id="btn-submit" style="flex:1;justify-content:center;">
+            ✓ Confirm &amp; Enroll Driver
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4: Success -->
+<div id="step-4" class="hidden">
+  <div style="max-width:480px; margin:0 auto; text-align:center; padding:40px 0;">
+    <div style="width:80px;height:80px;background:rgba(46,204,113,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;border:2px solid var(--green);">
+      <svg style="width:40px;height:40px;color:var(--green);" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+    </div>
+    <div style="font-family:var(--font-display);font-size:28px;font-weight:800;color:var(--green);margin-bottom:8px;">ENROLLMENT COMPLETE</div>
+    <div style="color:var(--text-3);margin-bottom:6px;">Driver has been successfully registered.</div>
+    <div style="font-family:var(--font-mono);font-size:18px;color:var(--amber);margin:16px 0;" id="success-id">—</div>
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;">
+      <a href="{{ url_for('main.drivers') }}" class="btn btn-secondary">View All Drivers</a>
+      <a href="{{ url_for('main.enroll_webcam') }}" class="btn btn-primary" onclick="location.reload();return false;">Enroll Another</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentStep = 1;
+let stream = null;
+let capturedImages = [];
+let autoMode = false;
+let autoInterval = null;
+const MIN_CAPTURES = 5;
+const MAX_CAPTURES = 8;
+
+function setStep(n) {
+  for (let i = 1; i <= 4; i++) {
+    document.getElementById(`step-${i}`).classList.toggle('hidden', i !== n);
+    const ind = document.getElementById(`step-ind-${i}`);
+    ind.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+  }
+  currentStep = n;
+}
+
+function goToCapture() {
+  const fn = document.getElementById('first_name').value.trim();
+  const ln = document.getElementById('last_name').value.trim();
+  if (!fn || !ln) { alert('First and last name are required.'); return; }
+  setStep(2);
+  startCamera();
+}
+
+function goBack() {
+  stopAuto();
+  setStep(1);
+}
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width:640, height:480, facingMode:'user' } });
+    document.getElementById('webcam').srcObject = stream;
+    document.getElementById('webcam').classList.remove('hidden');
+    document.getElementById('annotated-img').classList.add('hidden');
+  } catch(e) {
+    document.getElementById('capture-status').innerHTML = `<span style="color:var(--red)">Camera access denied: ${e.message}</span>`;
+  }
+}
+
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+}
+
+async function captureFrame() {
+  if (capturedImages.length >= MAX_CAPTURES) return;
+  const video = document.getElementById('webcam');
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+  // Flash
+  const flash = document.getElementById('capture-flash');
+  flash.style.opacity = '1';
+  setTimeout(() => flash.style.opacity = '0', 150);
+
+  document.getElementById('capture-status').textContent = 'Processing…';
+  try {
+    const res = await fetch('/api/enroll/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl })
+    });
+    const data = await res.json();
+    if (data.success) {
+      capturedImages.push(dataUrl);
+      addThumb(data.annotated || dataUrl, data.quality);
+      updateProgress();
+      highlightGuide(capturedImages.length);
+      document.getElementById('capture-status').textContent =
+        `✓ Capture ${capturedImages.length} accepted — Quality: ${data.quality}%`;
+    } else {
+      document.getElementById('capture-status').innerHTML =
+        `<span style="color:var(--red)">⚠ ${data.error}</span>`;
+    }
+  } catch(e) {
+    document.getElementById('capture-status').innerHTML =
+      `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  }
+}
+
+function addThumb(src, quality) {
+  const grid = document.getElementById('capture-grid');
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;';
+  const img = document.createElement('img');
+  img.src = src;
+  img.className = 'capture-thumb ok';
+  const bar = document.createElement('div');
+  bar.className = 'progress-bar-wrap quality-bar';
+  bar.style.cssText = 'width:100%;';
+  const fill = document.createElement('div');
+  fill.className = 'progress-bar';
+  fill.style.cssText = `width:${quality}%; background:${quality>=60?'var(--green)':quality>=40?'var(--amber)':'var(--red)'};`;
+  bar.appendChild(fill);
+  wrap.appendChild(img);
+  wrap.appendChild(bar);
+  grid.appendChild(wrap);
+}
+
+function updateProgress() {
+  const pct = (capturedImages.length / MAX_CAPTURES) * 100;
+  document.getElementById('capture-progress').style.width = pct + '%';
+  document.getElementById('capture-count').textContent = capturedImages.length;
+  const proceed = document.getElementById('btn-proceed');
+  proceed.disabled = capturedImages.length < MIN_CAPTURES;
+  if (capturedImages.length >= MAX_CAPTURES) {
+    stopAuto();
+    document.getElementById('btn-capture').disabled = true;
+    document.getElementById('capture-status').textContent = `✓ All ${MAX_CAPTURES} captures complete! Proceed when ready.`;
+  }
+}
+
+function highlightGuide(n) {
+  const guides = ['guide-1','guide-2','guide-3','guide-4','guide-5','guide-6'];
+  guides.forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (el) el.style.color = i < n ? 'var(--green)' : i === n ? 'var(--amber)' : 'var(--text-3)';
+  });
+}
+
+function toggleAuto() {
+  autoMode = !autoMode;
+  document.getElementById('btn-auto').textContent = autoMode ? 'Stop Auto' : 'Auto';
+  document.getElementById('btn-auto').className = autoMode ? 'btn btn-danger' : 'btn btn-secondary';
+  if (autoMode) {
+    autoInterval = setInterval(() => {
+      if (capturedImages.length < MAX_CAPTURES) captureFrame();
+      else stopAuto();
+    }, 2000);
+  } else {
+    stopAuto();
+  }
+}
+function stopAuto() {
+  autoMode = false;
+  if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
+  const btn = document.getElementById('btn-auto');
+  if (btn) { btn.textContent = 'Auto'; btn.className = 'btn btn-secondary'; }
+}
+
+function goToConfirm() {
+  if (capturedImages.length < MIN_CAPTURES) { alert('Please capture at least 5 photos.'); return; }
+  stopCamera();
+  // Populate confirm page
+  const fn = document.getElementById('first_name').value.trim();
+  const ln = document.getElementById('last_name').value.trim();
+  document.getElementById('confirm-name').textContent = `${fn} ${ln}`;
+  document.getElementById('confirm-meta').textContent =
+    `${capturedImages.length} face captures • ${new Date().toLocaleDateString('en-ZA', {day:'numeric',month:'long',year:'numeric'})}`;
+
+  const avatar = document.getElementById('confirm-avatar');
+  const img = document.createElement('img');
+  img.src = capturedImages[0];
+  img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+  avatar.appendChild(img);
+
+  const details = [
+    ['Email', document.getElementById('email').value || '—'],
+    ['Phone', document.getElementById('phone').value || '—'],
+    ['Role', document.getElementById('role').value || '—'],
+    ['Notes', document.getElementById('notes').value || '—'],
+  ];
+  document.getElementById('confirm-details').innerHTML = details
+    .map(([k,v]) => `<div><span style="color:var(--text-3); font-size:11px; text-transform:uppercase; font-family:var(--font-display); letter-spacing:1px;">${k}:</span> <span style="color:var(--text-1);">${v}</span></div>`)
+    .join('');
+
+  setStep(3);
+}
+
+async function submitEnrollment() {
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true;
+  btn.textContent = 'Enrolling…';
+
+  const payload = {
+    first_name: document.getElementById('first_name').value.trim(),
+    last_name: document.getElementById('last_name').value.trim(),
+    email: document.getElementById('email').value.trim(),
+    phone: document.getElementById('phone').value.trim(),
+    role: document.getElementById('role').value,
+    notes: document.getElementById('notes').value.trim(),
+    images: capturedImages,
+  };
+
+  try {
+    const res = await fetch('/api/enroll/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('success-id').textContent = data.driver_code;
+      setStep(4);
+    } else {
+      btn.disabled = false;
+      btn.textContent = '✓ Confirm & Enroll Driver';
+      alert('Enrollment failed: ' + data.error);
+    }
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '✓ Confirm & Enroll Driver';
+    alert('Network error: ' + e.message);
+  }
+}
+
+// Init
+setStep(1);
+</script>
+{% endblock %}

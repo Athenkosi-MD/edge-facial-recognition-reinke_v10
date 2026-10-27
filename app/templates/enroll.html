@@ -1,0 +1,811 @@
+{% extends "base.html" %}
+{% block title %}Enroll Driver – Edge Telematics{% endblock %}
+{% block page_title %}Driver Enrollment{% endblock %}
+{% block page_subtitle %}Register a new driver into the recognition system{% endblock %}
+
+{% block head %}
+<style>
+    .step-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        margin-bottom: 36px;
+    }
+
+    .step {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+    }
+
+    .step-num {
+        width: 32px; height: 32px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        font-weight: 700;
+        font-family: var(--font-head);
+        border: 2px solid var(--border);
+        color: var(--text-dim);
+        background: var(--surface);
+        flex-shrink: 0;
+        transition: all 0.3s;
+    }
+
+    .step.active .step-num { border-color: var(--accent); color: var(--accent); background: rgba(30,123,196,0.10); }
+    .step.done .step-num { border-color: var(--accent); color: #fff; background: var(--accent); }
+
+    .step-label {
+        font-size: 12px;
+        color: var(--text-dim);
+        transition: color 0.3s;
+    }
+
+    .step.active .step-label { color: var(--text); }
+    .step.done .step-label { color: var(--accent); }
+
+    .step-line {
+        flex: 1;
+        height: 1px;
+        background: var(--border);
+        margin: 0 8px;
+        max-width: 60px;
+    }
+
+    .step-panel { display: none; }
+    .step-panel.active { display: block; }
+
+    /* Webcam UI */
+    .webcam-container {
+        position: relative;
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+        aspect-ratio: 4/3;
+        max-width: 520px;
+        margin: 0 auto;
+        border: 2px solid var(--border);
+    }
+
+    #webcamVideo, #webcamCanvas {
+        width: 100%; height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    #webcamCanvas { position: absolute; inset: 0; }
+
+    .webcam-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+    }
+
+    .face-guide {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: 180px; height: 240px;
+        border: 2px dashed rgba(30,123,196,0.40);
+        border-radius: 50%;
+    }
+
+    .cam-status {
+        position: absolute;
+        bottom: 12px; left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.7);
+        backdrop-filter: blur(8px);
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .capture-btn {
+        width: 64px; height: 64px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: none;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        margin: 20px auto 0;
+        transition: transform 0.15s, box-shadow 0.15s;
+        box-shadow: 0 0 0 4px rgba(30,123,196,0.20);
+    }
+
+    .capture-btn:hover { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(30,123,196,0.15); }
+    .capture-btn:active { transform: scale(0.97); }
+
+    .capture-btn svg { color: #fff; }
+
+    .photo-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+        margin-top: 20px;
+    }
+
+    .photo-thumb {
+        aspect-ratio: 1;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 2px solid var(--border);
+        position: relative;
+        background: var(--surface2);
+    }
+
+    .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+    .photo-thumb .remove-btn {
+        position: absolute;
+        top: 4px; right: 4px;
+        width: 20px; height: 20px;
+        border-radius: 50%;
+        background: rgba(255,71,87,0.8);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        font-size: 11px;
+        display: grid;
+        place-items: center;
+        opacity: 0;
+        transition: opacity 0.15s;
+    }
+
+    .photo-thumb:hover .remove-btn { opacity: 1; }
+
+    .photo-slot {
+        aspect-ratio: 1;
+        border-radius: 8px;
+        border: 2px dashed var(--border);
+        display: grid;
+        place-items: center;
+        color: var(--text-muted);
+        font-size: 20px;
+    }
+
+    .progress-bar-wrap {
+        height: 4px;
+        background: var(--surface2);
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 12px 0;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background: var(--accent);
+        border-radius: 4px;
+        transition: width 0.4s;
+    }
+
+    .quality-indicator {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        font-size: 11px;
+    }
+
+    .quality-pill {
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .quality-pill.good { border-color: var(--accent); color: var(--accent); }
+    .quality-pill.bad { border-color: var(--danger); color: var(--danger); }
+
+    /* Upload zone */
+    .upload-zone {
+        border: 2px dashed var(--border);
+        border-radius: 12px;
+        padding: 40px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .upload-zone:hover, .upload-zone.dragover {
+        border-color: var(--accent);
+        background: rgba(30,123,196,0.05);
+    }
+
+    .method-tabs {
+        display: flex;
+        gap: 2px;
+        background: var(--surface2);
+        padding: 4px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+
+    .method-tab {
+        flex: 1;
+        padding: 9px;
+        border-radius: 7px;
+        text-align: center;
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--text-dim);
+        transition: all 0.2s;
+        border: none;
+        background: transparent;
+    }
+
+    .method-tab.active {
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--border);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:820px;margin:0 auto;">
+    <!-- Step indicator -->
+    <div class="step-indicator" id="stepIndicator">
+        <div class="step active" id="step-ind-1">
+            <div class="step-num">1</div>
+            <div class="step-label">Driver Info</div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step" id="step-ind-2">
+            <div class="step-num">2</div>
+            <div class="step-label">Face Capture</div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step" id="step-ind-3">
+            <div class="step-num">3</div>
+            <div class="step-label">Review & Enroll</div>
+        </div>
+    </div>
+
+    <!-- Step 1: Driver Info -->
+    <div class="step-panel active" id="panel-1">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Driver Information</span>
+                <span class="badge badge-info">STEP 1 OF 3</span>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning" style="margin-bottom:20px;">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Please fill in accurate driver details. These will be used for identification records.
+                </div>
+                {% if promote %}
+                <div class="alert alert-success" style="margin-bottom:20px;"><div>
+                    Completing full enrollment for <strong>{{ promote.driver_id }}</strong>
+                    (currently {{ promote.state_label }}). The driver keeps the same ID, so trips already
+                    allocated in Trust Track stay with them. The recognition service rebuilds their
+                    templates from these photos automatically. Capture consent and enrollment photos as normal.
+                </div></div>
+                <input type="hidden" id="promoteDriverId" value="{{ promote.driver_id }}">
+                {% endif %}
+                <div class="grid grid-2">
+                    <div class="form-group">
+                        <label class="form-label">First Name *</label>
+                        <input type="text" id="firstName" class="form-control" {% if promote and promote.enrollment_state == 'AUTO_ENROLLED' and promote.first_name %}value="{{ promote.first_name }}"{% endif %} placeholder="e.g. John" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Last Name *</label>
+                        <input type="text" id="lastName" class="form-control" {% if promote and promote.enrollment_state == 'AUTO_ENROLLED' and promote.last_name %}value="{{ promote.last_name }}"{% endif %} placeholder="e.g. Smith" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email Address</label>
+                        <input type="email" id="email" class="form-control" {% if promote and promote.enrollment_state == 'AUTO_ENROLLED' and promote.email %}value="{{ promote.email }}"{% endif %} placeholder="driver@fleet.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone Number</label>
+                        <input type="tel" id="phone" class="form-control" {% if promote and promote.enrollment_state == 'AUTO_ENROLLED' and promote.phone %}value="{{ promote.phone }}"{% endif %} placeholder="+27 12 345 6789">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Role *</label>
+                        <select id="role" class="form-control" required>
+                            <option value="Driver" selected>Driver</option>
+                            <option value="Mechanic">Mechanic</option>
+                            <option value="Operations">Operations</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+                    <button class="btn btn-primary btn-lg" onclick="goToStep(2)">
+                        Continue to Face Capture
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Face Capture -->
+    <div class="step-panel" id="panel-2">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Face Capture</span>
+                <span class="badge badge-info">STEP 2 OF 3</span>
+            </div>
+            <div class="card-body">
+                <div class="method-tabs">
+                    <button class="method-tab active" id="tab-webcam" onclick="switchMethod('webcam')">
+                        📷 Webcam Capture
+                    </button>
+                    <button class="method-tab" id="tab-upload" onclick="switchMethod('upload')">
+                        📁 Photo Upload
+                    </button>
+                </div>
+
+                <!-- Webcam panel -->
+                <div id="webcam-panel">
+                    <div class="alert alert-success" style="margin-bottom:16px;">
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        Capture <strong>5–20 photos</strong> from different angles: front, slight left, slight right, slight up, slight down.
+                    </div>
+
+                    <div class="webcam-container">
+                        <video id="webcamVideo" autoplay muted playsinline></video>
+                        <canvas id="webcamCanvas"></canvas>
+                        <div class="webcam-overlay">
+                            <div class="face-guide"></div>
+                            <div class="cam-status" id="camStatus">
+                                <span id="camStatusText" style="color:var(--text-dim);">Initializing camera...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="quality-indicator" id="qualityIndicator" style="justify-content:center;display:none;">
+                        <div class="quality-pill" id="qSharpness">— Sharpness</div>
+                        <div class="quality-pill" id="qBrightness">— Brightness</div>
+                        <div class="quality-pill" id="qFace">— Face</div>
+                    </div>
+
+                    <div style="text-align:center;">
+                        <button class="capture-btn" id="captureBtn" onclick="capturePhoto()" disabled title="Capture Photo">
+                            <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M20 7h-3.5l-1.5-3h-6L7.5 7H4a2 2 0 00-2 2v11a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/>
+                            </svg>
+                        </button>
+                        <div style="font-size:11px;color:var(--text-dim);margin-top:8px;">CAPTURE PHOTO</div>
+                    </div>
+                </div>
+
+                <!-- Upload panel -->
+                <div id="upload-panel" style="display:none;">
+                    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('photoInput').click()">
+                        <div style="font-size:40px;margin-bottom:12px;">📁</div>
+                        <div style="font-family:var(--font-head);font-size:16px;font-weight:700;margin-bottom:6px;">Drop photos here or click to browse</div>
+                        <div style="font-size:12px;color:var(--text-dim);">Supports JPG, PNG · Min 5 photos recommended · Clear face required</div>
+                        <input type="file" id="photoInput" accept=".jpg,.jpeg,.png" multiple style="display:none;" onchange="handlePhotoUpload(this)">
+                    </div>
+                </div>
+
+                <!-- Progress & thumbnails -->
+                <div style="margin-top:24px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                        <span style="font-size:12px;color:var(--text-dim);">Captured Photos</span>
+                        <span style="font-size:12px;" id="photoCountLabel"><span id="photoCount" style="color:var(--accent);font-weight:700;">0</span> / 20</span>
+                    </div>
+                    <div class="progress-bar-wrap">
+                        <div class="progress-bar" id="progressBar" style="width:0%;"></div>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;" id="photoHint">Minimum 5 photos required for reliable recognition</div>
+
+                    <div class="photo-grid" id="photoGrid"></div>
+                </div>
+
+                <div style="display:flex;justify-content:space-between;margin-top:28px;">
+                    <button class="btn btn-secondary" onclick="goToStep(1)">← Back</button>
+                    <button class="btn btn-primary btn-lg" id="continueBtn" onclick="goToStep(3)" disabled>
+                        Review & Enroll
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3: Review & Confirm -->
+    <div class="step-panel" id="panel-3">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Review & Confirm Enrollment</span>
+                <span class="badge badge-info">STEP 3 OF 3</span>
+            </div>
+            <div class="card-body">
+                <div style="display:flex;gap:32px;align-items:flex-start;">
+                    <div id="reviewPhoto" style="width:80px;height:80px;border-radius:12px;background:var(--surface2);border:2px solid var(--border);overflow:hidden;flex-shrink:0;">
+                        <div style="width:100%;height:100%;display:grid;place-items:center;font-size:28px;">👤</div>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-family:var(--font-head);font-size:24px;font-weight:800;" id="reviewName">—</div>
+                        <div style="color:var(--text-dim);font-size:13px;margin-top:4px;" id="reviewEmail">—</div>
+                        <div style="margin-top:12px;display:grid;grid-template-columns:repeat(3,auto);gap:8px;">
+                            <div>
+                                <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;">PHOTOS CAPTURED</div>
+                                <div style="font-size:20px;font-weight:700;color:var(--accent);" id="reviewPhotoCount">0</div>
+                            </div>
+                            <div>
+                                <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;">ROLE</div>
+                                <div style="font-size:13px;" id="reviewRole">—</div>
+                            </div>
+                            <div>
+                                <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;">PHONE</div>
+                                <div style="font-size:13px;" id="reviewPhone">—</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="alert alert-warning">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Face embeddings will be computed and stored. Processing may take a moment depending on hardware.
+                </div>
+
+                <div id="enrollResult" style="display:none;"></div>
+
+                <div style="display:flex;justify-content:space-between;margin-top:24px;" id="enrollActions">
+                    <button class="btn btn-secondary" onclick="goToStep(2)">← Edit Photos</button>
+                    <button class="btn btn-primary btn-lg" id="enrollBtn" onclick="submitEnrollment()">
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        Confirm Enrollment
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let capturedImages = [];
+let videoStream = null;
+let detectionInterval = null;
+let currentFaceDetected = false;
+const MIN_PHOTOS = 5;
+const MAX_PHOTOS = 20;
+
+// ── Image compression ─────────────────────────────────────────────────────────
+// Mirrors image_preparation.py: caps longest side at 480px, JPEG quality 0.70
+// A raw 1280×720 webcam frame (~200 KB base64) becomes ~8 KB — 25× smaller.
+// 20 frames = ~160 KB total payload instead of ~4 MB+, eliminating 413 errors.
+const COMPRESS_MAX_PX  = 480;   // matches DEFAULT_MAX_LONG_SIDE in image_preparation.py
+const COMPRESS_QUALITY = 0.70;  // matches DEFAULT_JPEG_QUALITY (85/100 ≈ 0.70 perceptually)
+
+/**
+ * Downscale + JPEG-compress any image source to a small data-URI.
+ * @param {HTMLVideoElement|HTMLCanvasElement|HTMLImageElement} source
+ * @returns {string|null}  "data:image/jpeg;base64,..." or null on failure
+ */
+function compressFrame(source) {
+    const srcW = source.videoWidth  || source.naturalWidth  || source.width;
+    const srcH = source.videoHeight || source.naturalHeight || source.height;
+    if (!srcW || !srcH) return null;
+
+    const scale = Math.min(1, COMPRESS_MAX_PX / Math.max(srcW, srcH));
+    const dstW  = Math.max(1, Math.round(srcW * scale));
+    const dstH  = Math.max(1, Math.round(srcH * scale));
+
+    const c   = document.createElement('canvas');
+    c.width   = dstW;
+    c.height  = dstH;
+    c.getContext('2d').drawImage(source, 0, 0, dstW, dstH);
+    return c.toDataURL('image/jpeg', COMPRESS_QUALITY);
+}
+
+/**
+ * Compress an uploaded File object via a temporary Image element.
+ * Returns a Promise that resolves to a compressed data-URI.
+ */
+function compressFile(file) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            const compressed = compressFrame(img);
+            URL.revokeObjectURL(url);
+            resolve(compressed);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(); };
+        img.src = url;
+    });
+}
+
+// ── Step navigation ──────────────────────────────────────────────────────────
+function goToStep(n) {
+    if (n === 2) {
+        const first = document.getElementById('firstName').value.trim();
+        const last = document.getElementById('lastName').value.trim();
+        if (!first || !last) { showToast('Please enter first and last name', 'error'); return; }
+        initWebcam();
+    }
+
+    if (n === 3) {
+        if (capturedImages.length < MIN_PHOTOS) {
+            showToast(`Please capture at least ${MIN_PHOTOS} photos`, 'error'); return;
+        }
+        populateReview();
+    }
+
+    for (let i = 1; i <= 3; i++) {
+        document.getElementById(`panel-${i}`).classList.toggle('active', i === n);
+        const ind = document.getElementById(`step-ind-${i}`);
+        ind.className = 'step' + (i === n ? ' active' : (i < n ? ' done' : ''));
+    }
+
+    // Stop webcam if leaving step 2
+    if (n !== 2 && videoStream) {
+        videoStream.getTracks().forEach(t => t.stop());
+        clearInterval(detectionInterval);
+    }
+}
+
+// ── Webcam ───────────────────────────────────────────────────────────────────
+async function initWebcam() {
+    const video = document.getElementById('webcamVideo');
+    try {
+        videoStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+        });
+        video.srcObject = videoStream;
+        video.onloadedmetadata = () => {
+            document.getElementById('camStatusText').textContent = 'Camera ready – position your face in the oval';
+            document.getElementById('camStatusText').style.color = 'var(--accent)';
+            startDetectionLoop();
+        };
+    } catch(e) {
+        document.getElementById('camStatusText').textContent = 'Camera access denied. Use photo upload instead.';
+        document.getElementById('camStatusText').style.color = 'var(--danger)';
+    }
+}
+
+function startDetectionLoop() {
+    if (detectionInterval) clearInterval(detectionInterval);
+    detectionInterval = setInterval(async () => {
+        const video = document.getElementById('webcamVideo');
+        if (video.readyState < 2) return;
+
+        // Compress before sending to /api/detect-face — avoids 413 on the preview call too
+        const b64 = compressFrame(video);
+        if (!b64) return;
+
+        try {
+            const res = await fetch('/api/detect-face', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: b64 })
+            });
+            const data = await res.json();
+            updateDetectionUI(data);
+        } catch(e) {}
+    }, 800);
+}
+
+function updateDetectionUI(data) {
+    const btn = document.getElementById('captureBtn');
+    const statusText = document.getElementById('camStatusText');
+    const qi = document.getElementById('qualityIndicator');
+    qi.style.display = 'flex';
+
+    if (data.detected) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        currentFaceDetected = true;
+        statusText.textContent = '✓ Face detected – ready to capture';
+        statusText.style.color = 'var(--accent)';
+
+        const q = data.quality;
+        setQuality('qSharpness', q.sharp_ok, q.sharp_ok ? '✓ Sharp' : '✕ Blurry');
+        setQuality('qBrightness', q.bright_ok, q.bright_ok ? '✓ Bright' : '✕ Lighting');
+        setQuality('qFace', true, `✓ ${(data.confidence*100).toFixed(0)}% conf`);
+    } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+        currentFaceDetected = false;
+        statusText.textContent = data.message || 'No face detected';
+        statusText.style.color = 'var(--text-dim)';
+        setQuality('qFace', false, '✕ No Face');
+        setQuality('qSharpness', false, '— Sharp');
+        setQuality('qBrightness', false, '— Bright');
+    }
+}
+
+function setQuality(id, ok, text) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = 'quality-pill ' + (ok ? 'good' : 'bad');
+}
+
+function capturePhoto() {
+    if (!currentFaceDetected || capturedImages.length >= MAX_PHOTOS) return;
+    const video = document.getElementById('webcamVideo');
+
+    // Compress the frame before storing — this is what eliminates the 413
+    const b64 = compressFrame(video);
+    if (!b64) return;
+
+    addCapturedImage(b64);
+
+    // Flash effect
+    const flash = document.createElement('div');
+    flash.style.cssText = 'position:absolute;inset:0;background:white;z-index:10;opacity:0.6;pointer-events:none;';
+    document.querySelector('.webcam-container').appendChild(flash);
+    setTimeout(() => flash.remove(), 150);
+
+    showToast(`Photo ${capturedImages.length} captured`, 'success', 1500);
+}
+
+// ── Upload ───────────────────────────────────────────────────────────────────
+function switchMethod(method) {
+    document.getElementById('webcam-panel').style.display = method === 'webcam' ? 'block' : 'none';
+    document.getElementById('upload-panel').style.display = method === 'upload' ? 'block' : 'none';
+    document.getElementById('tab-webcam').classList.toggle('active', method === 'webcam');
+    document.getElementById('tab-upload').classList.toggle('active', method === 'upload');
+    if (method === 'webcam') initWebcam();
+}
+
+async function handlePhotoUpload(input) {
+    for (const file of Array.from(input.files)) {
+        if (capturedImages.length >= MAX_PHOTOS) break;
+        try {
+            // Compress uploaded files the same way as webcam frames
+            const compressed = await compressFile(file);
+            if (compressed) addCapturedImage(compressed);
+        } catch(e) {
+            console.warn('Could not compress uploaded file:', file.name);
+        }
+    }
+}
+
+// Setup drag and drop
+document.getElementById('uploadZone')?.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.currentTarget.classList.add('dragover');
+});
+document.getElementById('uploadZone')?.addEventListener('dragleave', e => {
+    e.currentTarget.classList.remove('dragover');
+});
+document.getElementById('uploadZone')?.addEventListener('drop', e => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('dragover');
+    const input = { files: e.dataTransfer.files };
+    handlePhotoUpload(input);
+});
+
+// ── Photo management ─────────────────────────────────────────────────────────
+function addCapturedImage(b64) {
+    capturedImages.push(b64);
+    renderPhotoGrid();
+    updatePhotoProgress();
+}
+
+function removePhoto(index) {
+    capturedImages.splice(index, 1);
+    renderPhotoGrid();
+    updatePhotoProgress();
+}
+
+function renderPhotoGrid() {
+    const grid = document.getElementById('photoGrid');
+    grid.innerHTML = '';
+    capturedImages.forEach((img, i) => {
+        const div = document.createElement('div');
+        div.className = 'photo-thumb';
+        div.innerHTML = `<img src="${img}" alt="Photo ${i+1}">
+            <button class="remove-btn" onclick="removePhoto(${i})">✕</button>`;
+        grid.appendChild(div);
+    });
+    // Add placeholder slots
+    const slotsNeeded = Math.max(0, Math.min(5, MIN_PHOTOS - capturedImages.length));
+    for (let i = 0; i < slotsNeeded; i++) {
+        const div = document.createElement('div');
+        div.className = 'photo-slot';
+        div.textContent = '+';
+        grid.appendChild(div);
+    }
+}
+
+function updatePhotoProgress() {
+    const count = capturedImages.length;
+    document.getElementById('photoCount').textContent = count;
+    document.getElementById('progressBar').style.width = Math.min(100, count / MAX_PHOTOS * 100) + '%';
+    const hint = document.getElementById('photoHint');
+    const btn = document.getElementById('continueBtn');
+    if (count < MIN_PHOTOS) {
+        hint.textContent = `${MIN_PHOTOS - count} more photo(s) needed`;
+        hint.style.color = 'var(--danger)';
+        btn.disabled = true;
+    } else {
+        hint.textContent = `✓ Great! ${count} photos captured. You can add more for better accuracy.`;
+        hint.style.color = 'var(--accent)';
+        btn.disabled = false;
+    }
+}
+
+// ── Review ───────────────────────────────────────────────────────────────────
+function populateReview() {
+    document.getElementById('reviewName').textContent =
+        `${document.getElementById('firstName').value} ${document.getElementById('lastName').value}`;
+    document.getElementById('reviewEmail').textContent =
+        document.getElementById('email').value || 'No email provided';
+    document.getElementById('reviewPhone').textContent =
+        document.getElementById('phone').value || '—';
+    document.getElementById('reviewRole').textContent =
+        document.getElementById('role').value || '—';
+    document.getElementById('reviewPhotoCount').textContent = capturedImages.length;
+
+    if (capturedImages.length > 0) {
+        const reviewPhoto = document.getElementById('reviewPhoto');
+        reviewPhoto.innerHTML = `<img src="${capturedImages[0]}" style="width:100%;height:100%;object-fit:cover;">`;
+    }
+}
+
+// ── Enrollment submission ─────────────────────────────────────────────────────
+async function submitEnrollment() {
+    const btn = document.getElementById('enrollBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Processing...';
+    showLoader('Computing face embeddings...');
+
+    const formData = new FormData();
+    formData.append('first_name', document.getElementById('firstName').value);
+    formData.append('last_name', document.getElementById('lastName').value);
+    formData.append('email', document.getElementById('email').value);
+    formData.append('phone', document.getElementById('phone').value);
+    formData.append('role', document.getElementById('role').value);
+    formData.append('captured_images', JSON.stringify(capturedImages));
+    const promoteEl = document.getElementById('promoteDriverId');
+    if (promoteEl) formData.append('promote_driver_id', promoteEl.value);
+
+    try {
+        const res = await fetch('/api/enroll', { method: 'POST', body: formData });
+        const data = await res.json();
+        hideLoader();
+
+        const resultDiv = document.getElementById('enrollResult');
+        resultDiv.style.display = 'block';
+
+        if (data.success) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <div>
+                        <strong>Enrollment Successful!</strong><br>
+                        ${data.message}<br>
+                        <span style="font-size:11px;opacity:0.8;">Driver ID: ${data.driver.driver_id}</span>
+                    </div>
+                </div>`;
+            document.getElementById('enrollActions').innerHTML = `
+                <a href="/drivers" class="btn btn-secondary">View All Drivers</a>
+                <a href="/enroll" class="btn btn-primary">Enroll Another</a>`;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <div><strong>Enrollment Failed</strong><br>${data.error}</div>
+                </div>`;
+            btn.disabled = false;
+            btn.innerHTML = '⟳ Retry Enrollment';
+        }
+    } catch(e) {
+        hideLoader();
+        showToast('Network error. Please try again.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = 'Confirm Enrollment';
+    }
+}
+
+// Init
+renderPhotoGrid();
+</script>
+{% endblock %}

@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Unidentified Drivers – Edge Telematics{% endblock %}
+{% block page_title %}Unidentified Drivers{% endblock %}
+{% block page_subtitle %}Faces the system could not match - confirm, merge or flag each one{% endblock %}
+
+{% block head %}
+<style>
+  .uq-tabs { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+  .uq-tab { padding:7px 14px; border-radius:8px; border:1px solid var(--border); background:var(--surface);
+            font-size:13px; color:var(--text-dim); text-decoration:none; font-weight:600; }
+  .uq-tab.active { border-color:var(--accent); color:var(--accent); background:var(--accent-pale); }
+  .uq-card { margin-bottom:16px; }
+  .uq-head { display:flex; gap:16px; align-items:flex-start; padding:20px; cursor:pointer; }
+  .uq-avatar { width:84px; height:84px; border-radius:12px; object-fit:cover; border:2px solid var(--border); flex-shrink:0; background:var(--surface2); }
+  .uq-meta { flex:1; min-width:0; }
+  .uq-id { font-family:var(--font-head); font-size:18px; font-weight:800; }
+  .uq-facts { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px 16px; margin-top:10px; font-size:12px; }
+  .uq-facts .k { font-size:9px; letter-spacing:1.3px; text-transform:uppercase; color:var(--text-dim); }
+  .uq-body { display:none; border-top:1px solid var(--border); padding:20px; }
+  .uq-card.open .uq-body { display:block; }
+  .uq-grid { display:grid; grid-template-columns: 1fr; gap:24px; }
+  .uq-photos { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:8px; }
+  .uq-photos img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:zoom-in; }
+  .uq-section { font-family:var(--font-head); font-size:12px; font-weight:700; letter-spacing:.5px; margin:0 0 10px; text-transform:uppercase; color:var(--text-dim); }
+  .uq-near { display:flex; align-items:center; gap:10px; padding:8px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; }
+  .uq-near img, .uq-near .ph { width:44px; height:44px; border-radius:8px; object-fit:cover; background:var(--surface2); flex-shrink:0; }
+  .uq-near .sim { font-weight:800; font-size:14px; min-width:52px; text-align:right; }
+  .uq-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .uq-actions .form-control { font-size:13px; }
+  .uq-panel { border:1px solid var(--border); border-radius:12px; padding:16px; margin-top:16px; }
+  .uq-table { width:100%; font-size:12px; border-collapse:collapse; }
+  .uq-table td { padding:5px 4px; border-bottom:1px solid var(--border); }
+  .uq-zoom { display:none; position:fixed; inset:0; background:rgba(5,12,25,.88); z-index:9999; align-items:center; justify-content:center; }
+  .uq-zoom.open { display:flex; }
+  .uq-zoom img { max-width:90vw; max-height:85vh; border-radius:12px; }
+  .uq-modal { display:none; position:fixed; inset:0; background:rgba(5,12,25,.55); z-index:9998; align-items:center; justify-content:center; padding:16px; }
+  .uq-modal.open { display:flex; }
+  .uq-modal-box { background:var(--surface); border-radius:14px; padding:22px; width:100%; max-width:560px; max-height:92vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+  .uq-modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .uq-modal-x { border:none; background:none; font-size:24px; line-height:1; cursor:pointer; color:var(--text-dim); }
+  @media (max-width:900px) { .uq-grid, .uq-actions { grid-template-columns:1fr; } .uq-head { flex-direction:column; } }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set cur_role = session.get('role', '') %}
+<div class="uq-tabs">
+  <a class="uq-tab {% if state == 'UNIDENTIFIED' %}active{% endif %}" href="/unidentified">Needs review ({{ counts.get('UNIDENTIFIED', 0) }})</a>
+  <a class="uq-tab {% if state == 'AUTO_ENROLLED' %}active{% endif %}" href="/unidentified?state=AUTO_ENROLLED">Auto-enrolled, awaiting full enrollment ({{ counts.get('AUTO_ENROLLED', 0) }})</a>
+</div>
+
+{% if state == 'UNIDENTIFIED' %}
+<div class="alert alert-warning" style="margin-bottom:20px;"><div>
+  Before confirming someone as a new driver, compare the cab snapshots with your existing drivers. If the
+  face is an existing driver (often at night or on infrared), use <strong>Merge</strong> instead, so the
+  same person doesn't end up with two identities.
+</div></div>
+{% endif %}
+
+{% if drivers %}
+  {% for d in drivers %}
+  <div class="card uq-card" id="{{ d.driver_id }}" data-driver="{{ d.driver_id }}">
+    <div class="uq-head" onclick="toggleCard('{{ d.driver_id }}')">
+      {% if d.photo_url %}<img class="uq-avatar" src="{{ d.photo_url }}" alt="">{% else %}<div class="uq-avatar"></div>{% endif %}
+      <div class="uq-meta">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <span class="uq-id">{{ d.driver_id }}</span>
+          {% include '_state_badge.html' %}
+          {% if not d.trusttrack_id %}<span class="badge badge-warning" title="Will be retried automatically">TRUST TRACK PENDING</span>{% endif %}
+          {% if d.name_pending %}<span class="badge badge-warning" title="Auto-enrolled without a name - add it via Edit Profile">NAME PENDING</span>{% endif %}
+        </div>
+        <div style="color:var(--text-dim);font-size:13px;margin-top:2px;">{{ d.first_name }} {{ d.last_name }}</div>
+        <div class="uq-facts">
+          <div><div class="k">First seen</div>{{ d.first_seen_at.strftime('%d %b %H:%M') if d.first_seen_at else '—' }}{% if d.first_seen_vehicle %} · {{ d.first_seen_vehicle|replace('_', ' ') }}{% endif %}</div>
+          <div><div class="k">Last seen</div>{{ d.last_seen_at.strftime('%d %b %H:%M') if d.last_seen_at else '—' }}{% if d.last_seen_vehicle %} · {{ d.last_seen_vehicle|replace('_', ' ') }}{% endif %}</div>
+          <div><div class="k">Sightings</div>{{ d.sighting_count or 0 }}</div>
+          {% if d.confirmed_by_client %}<div><div class="k">Authorized by (client contact)</div>{{ d.confirmed_by_client }}</div>{% endif %}
+          {% if d.confirmed_by %}<div><div class="k">Recorded by</div>{{ d.confirmed_by }} · {{ d.confirmed_at.strftime('%d %b %H:%M') if d.confirmed_at }}</div>{% endif %}
+          {% if d.state_note and d.enrollment_state == 'AUTO_ENROLLED' %}<div style="grid-column:1/-1;"><div class="k">Note</div>{{ d.state_note }}</div>{% endif %}
+        </div>
+      </div>
+      <div style="align-self:center;color:var(--text-dim);font-size:12px;">Details ▾</div>
+    </div>
+
+    <div class="uq-body">
+      <div class="uq-grid">
+        <div>
+          <div class="uq-section">Cab snapshots</div>
+          <div class="uq-photos" data-role="photos"><span style="font-size:12px;color:var(--text-dim);">Loading…</span></div>
+
+          <div data-role="pending" style="margin-top:12px;"></div>
+          <div class="uq-section" style="margin-top:20px;">Recent sightings</div>
+          <table class="uq-table" data-role="sightings"></table>
+        </div>
+      </div>
+
+      {% if cur_role in ('admin', 'support', 'client') %}
+      {% if d.state == 'UNIDENTIFIED' %}
+      <div class="uq-panel">
+        <div class="uq-section">Confirm as a legitimate driver (→ Auto-enrolled, alerts stop)</div>
+        <div style="font-size:13px;color:var(--text-dim);">
+          Use this once the client has authorized this person to drive. You'll be asked for the client
+          contact who authorized them; the note and the driver's name are optional.
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="openConfirmModal('{{ d.driver_id }}')">Confirm as legitimate driver…</button>
+          <a class="btn btn-secondary btn-sm" href="/enroll?promote={{ d.driver_id }}">Do full enrollment now instead</a>
+        </div>
+      </div>
+
+      <div class="uq-panel">
+        <div class="uq-section">It's an existing driver (→ Merge)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input class="form-control" style="max-width:280px;" placeholder="Search name or DRV id" oninput="searchTargets(this, '{{ d.driver_id }}')">
+          <select class="form-control" style="max-width:320px;" data-role="mergeTarget"><option value="">Pick a driver…</option></select>
+          <button class="btn btn-secondary btn-sm" onclick="mergeDriver('{{ d.driver_id }}')">Merge into selected</button>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if d.state == 'AUTO_ENROLLED' %}
+      <div class="uq-panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="font-size:13px;">
+          Auto-enrolled by OCC. Capture consent and enrollment photos to make this a full enrollment.
+        </div>
+        <div style="display:flex;gap:8px;">
+          <a class="btn btn-primary btn-sm" href="/enroll?promote={{ d.driver_id }}">Complete full enrollment</a>
+          <button class="btn btn-danger btn-sm" onclick="rejectDriver('{{ d.driver_id }}')">Mark unidentified</button>
+        </div>
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+<div class="card"><div class="card-body" style="text-align:center;padding:64px 32px;">
+  <div style="font-family:var(--font-head);font-size:20px;font-weight:700;margin-bottom:8px;">Nothing to review</div>
+  <div style="color:var(--text-dim);">
+    {% if state == 'UNIDENTIFIED' %}No unidentified drivers are waiting for review.{% else %}Every auto-enrolled driver has completed full enrollment.{% endif %}
+  </div>
+</div></div>
+{% endif %}
+
+<div class="uq-zoom" id="uqZoom" onclick="this.classList.remove('open')"><img id="uqZoomImg" alt=""></div>
+
+<!-- Confirm-as-legitimate popup -->
+<div class="uq-modal" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="cmTitle">
+  <div class="uq-modal-box">
+    <div class="uq-modal-head">
+      <div id="cmTitle" style="font-family:var(--font-head);font-size:18px;font-weight:800;">Confirm legitimate driver?</div>
+      <button class="uq-modal-x" onclick="closeConfirmModal()" aria-label="Close">×</button>
+    </div>
+    <div class="alert alert-warning" style="margin:0 0 16px;"><div>
+      Are you sure <strong id="cmDriver"></strong> is a legitimate driver? They become
+      <strong>Auto-enrolled</strong>: unknown-driver alerts for them stop, and the Trust Track driver is renamed.
+    </div></div>
+    <div class="form-group">
+      <label class="form-label">Client contact who authorized driver <span style="color:var(--danger)">*</span></label>
+      <input class="form-control" id="cmClient" placeholder="Name of the person at the client who authorized this driver" maxlength="150">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Note <span style="color:var(--text-dim);font-weight:400;">(optional)</span></label>
+      <textarea class="form-control" id="cmNote" rows="3" placeholder="e.g. Relief driver for route 14, confirmed by phone"></textarea>
+    </div>
+    <div class="uq-section" style="margin:6px 0 8px;">Driver details (optional)</div>
+    <div class="uq-actions">
+      <input class="form-control" id="cmFirst" placeholder="Driver first name">
+      <input class="form-control" id="cmLast" placeholder="Driver last name">
+      <input class="form-control" id="cmPhone" placeholder="Phone e.g. 074 750 1674">
+      <select class="form-control" id="cmRole"><option>Driver</option><option>Mechanic</option><option>Operations</option></select>
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:6px;">
+      Leave the name empty if it isn't known yet - the driver shows as "Auto Enrolled &lt;vehicle&gt; &lt;date&gt;" until it's added via Edit Profile.
+    </div>
+    <div id="cmError" style="color:var(--danger);font-size:12px;margin-top:10px;min-height:16px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+      <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+      <button class="btn btn-primary" id="cmSubmit" onclick="submitConfirm()" disabled>Yes, confirm driver</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const loaded = {};
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function toggleCard(id) {
+  const card = document.getElementById(id);
+  card.classList.toggle('open');
+  if (card.classList.contains('open') && !loaded[id]) loadDetails(id);
+}
+
+async function loadDetails(id) {
+  loaded[id] = true;
+  const card = document.getElementById(id);
+  try {
+    const r = await fetch(`/api/unidentified/${encodeURIComponent(id)}/details`);
+    const d = await r.json();
+    const ph = card.querySelector('[data-role=photos]');
+    ph.innerHTML = d.photos.length
+      ? d.photos.map(p => `<img src="${esc(p.url)}" onclick="event.stopPropagation();zoom('${esc(p.url)}')" alt="">`).join('')
+      : '<span style="font-size:12px;color:var(--text-dim);">No cab snapshots stored.</span>';
+    const pe = card.querySelector('[data-role=pending]');
+    pe.innerHTML = (d.pending || []).map(p => `<div class="badge ${p.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}"
+        style="margin:0 6px 6px 0;" title="${esc(p.error || 'Waiting for the recognition service')}">
+        ${esc(p.label)}: ${p.status === 'FAILED' ? 'retrying' : 'queued'}</div>`).join('');
+    const tb = card.querySelector('[data-role=sightings]');
+    tb.innerHTML = d.sightings.length ? d.sightings.map(s => `
+      <tr><td>${esc(s.time)}</td><td>${esc((s.vehicle || '').replace(/_/g, ' '))}</td><td>${esc(s.status)}</td><td style="text-align:right;">${esc(s.confidence)}%</td></tr>`).join('')
+      : '<tr><td style="color:var(--text-dim);">No sightings recorded.</td></tr>';
+  } catch (e) {
+    loaded[id] = false;
+    showToast('Could not load details', 'error');
+  }
+}
+
+function zoom(url) { document.getElementById('uqZoomImg').src = url; document.getElementById('uqZoom').classList.add('open'); }
+
+function pickTarget(id, targetId, name) {
+  const sel = document.getElementById(id).querySelector('[data-role=mergeTarget]');
+  if (!sel) return;
+  if (![...sel.options].some(o => o.value === targetId)) sel.add(new Option(`${name} (${targetId})`, targetId));
+  sel.value = targetId;
+  sel.scrollIntoView({behavior: 'smooth', block: 'center'});
+}
+
+let searchTimer;
+function searchTargets(input, id) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const r = await fetch(`/api/drivers/search?q=${encodeURIComponent(input.value)}`);
+    const d = await r.json();
+    const sel = document.getElementById(id).querySelector('[data-role=mergeTarget]');
+    sel.innerHTML = '<option value="">Pick a driver…</option>' +
+      d.drivers.map(x => `<option value="${esc(x.driver_id)}">${esc(x.name)} (${esc(x.driver_id)}) · ${esc(x.state)}</option>`).join('');
+  }, 250);
+}
+
+async function post(url, body) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+  return d;
+}
+
+let cmDriverId = null;
+function openConfirmModal(id) {
+  cmDriverId = id;
+  document.getElementById('cmDriver').textContent = id;
+  ['cmClient', 'cmNote', 'cmFirst', 'cmLast', 'cmPhone'].forEach(f => document.getElementById(f).value = '');
+  document.getElementById('cmRole').value = 'Driver';
+  document.getElementById('cmError').textContent = '';
+  validateConfirm();
+  document.getElementById('confirmModal').classList.add('open');
+  setTimeout(() => document.getElementById('cmClient').focus(), 50);
+}
+function closeConfirmModal() { document.getElementById('confirmModal').classList.remove('open'); cmDriverId = null; }
+function validateConfirm() {
+  const v = f => document.getElementById(f).value.trim();
+  let err = '';
+  if (!!v('cmFirst') !== !!v('cmLast')) err = 'Enter both first and last name, or leave both empty.';
+  document.getElementById('cmError').textContent = err;
+  document.getElementById('cmSubmit').disabled = !v('cmClient') || !!err;
+}
+['cmClient', 'cmNote', 'cmFirst', 'cmLast'].forEach(f => document.getElementById(f).addEventListener('input', validateConfirm));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeConfirmModal(); });
+document.getElementById('confirmModal').addEventListener('click', e => { if (e.target.id === 'confirmModal') closeConfirmModal(); });
+
+async function submitConfirm() {
+  const v = f => document.getElementById(f).value.trim();
+  const body = {confirmed_by_client: v('cmClient'), note: v('cmNote'), first_name: v('cmFirst'),
+                last_name: v('cmLast'), phone: v('cmPhone'), role: document.getElementById('cmRole').value};
+  const btn = document.getElementById('cmSubmit');
+  btn.disabled = true;
+  try {
+    await post(`/api/drivers/${encodeURIComponent(cmDriverId)}/confirm`, body);
+    closeConfirmModal();
+    showToast('Driver auto-enrolled - alerts stop, and Trust Track is renamed by the recognition service shortly', 'success');
+    setTimeout(() => location.reload(), 900);
+  } catch (e) {
+    document.getElementById('cmError').textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+async function mergeDriver(id) {
+  const sel = document.getElementById(id).querySelector('[data-role=mergeTarget]');
+  if (!sel.value) { showToast('Pick the existing driver first', 'warning'); return; }
+  if (!confirm(`Merge ${id} into ${sel.options[sel.selectedIndex].text}? Its face templates and sightings move to that driver and ${id} is retired.`)) return;
+  try {
+    await post(`/api/drivers/${encodeURIComponent(id)}/merge`, {target_driver_id: sel.value});
+    showToast('Merged', 'success');
+    setTimeout(() => location.reload(), 900);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function rejectDriver(id) {
+  const note = prompt('Why is this driver no longer authorized? They go back to Unidentified and alerts resume. (saved in the audit trail)');
+  if (note === null) return;
+  try {
+    await post(`/api/drivers/${encodeURIComponent(id)}/reject`, {note});
+    showToast('Marked unidentified', 'success');
+    setTimeout(() => location.reload(), 900);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// Deep link: /unidentified#DRV-123456 opens that card
+if (location.hash) {
+  const [did, act] = decodeURIComponent(location.hash.slice(1)).split(':');   // #DRV-123456 or #DRV-123456:confirm
+  if (document.getElementById(did)) {
+    toggleCard(did); document.getElementById(did).scrollIntoView({block: 'start'});
+    if (act === 'confirm') openConfirmModal(did);
+  }
+}
+</script>
+{% endblock %}

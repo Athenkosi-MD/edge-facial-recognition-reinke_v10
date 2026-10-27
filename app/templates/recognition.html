@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block title %}Recognition – Edge Telematics{% endblock %}
+{% block page_title %}Video Recognition{% endblock %}
+{% block page_subtitle %}Identify drivers from fleet event footage{% endblock %}
+
+{% block head %}
+<style>
+    .video-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .video-card:hover, .video-card.selected {
+        border-color: var(--accent);
+        background: rgba(30,123,196,0.05);
+    }
+    .video-card.selected { border-width: 2px; }
+
+    .video-icon {
+        width: 40px; height: 40px;
+        background: rgba(30,123,196,0.10);
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        flex-shrink: 0;
+    }
+
+    .result-driver-card {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .confidence-bar-wrap {
+        height: 3px;
+        background: var(--border);
+        border-radius: 3px;
+        margin-top: 6px;
+    }
+
+    .confidence-bar {
+        height: 3px;
+        border-radius: 3px;
+        background: var(--accent);
+    }
+
+    .results-section { display: none; }
+    .results-section.visible { display: block; }
+
+    .frame-timeline {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+    }
+
+    .frame-dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--border);
+    }
+
+    .frame-dot.identified { background: var(--accent); }
+    .frame-dot.unknown { background: var(--danger); }
+
+    .settings-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+    }
+
+    .settings-row:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-2" style="gap:24px;align-items:start;">
+    <!-- Left: Video selection -->
+    <div>
+        <div class="card" style="margin-bottom:20px;">
+            <div class="card-header">
+                <span class="card-title">Select Event Video</span>
+            </div>
+            <div class="card-body">
+                <!-- Upload new video -->
+                <div style="margin-bottom:16px;">
+                    <label class="form-label">Upload Video File</label>
+                    <input type="file" id="videoUpload" accept=".mp4,.avi,.mov,.mkv" class="form-control" onchange="selectUploadedVideo(this)">
+                </div>
+
+                {% if videos %}
+                <div class="divider"></div>
+                <div class="form-label" style="margin-bottom:10px;">Or Select from Fleet Videos ({{ videos|length }} available)</div>
+                <div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;" id="videoList">
+                    {% for v in videos %}
+                    <div class="video-card" onclick="selectVideo('{{ v.filename }}', this)" data-filename="{{ v.filename }}">
+                        <div class="video-icon">🎬</div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ v.filename }}</div>
+                            <div style="font-size:11px;color:var(--text-dim);">{{ v.size_mb }} MB</div>
+                        </div>
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);flex-shrink:0;"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div style="text-align:center;padding:24px;color:var(--text-dim);font-size:13px;">
+                    <div style="font-size:28px;margin-bottom:8px;">📂</div>
+                    No videos in <code style="font-size:11px;background:var(--surface2);padding:2px 6px;border-radius:4px;">data/videos/</code> folder.<br>
+                    Upload a video above or add files to the folder.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Settings -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Recognition Settings</span>
+            </div>
+            <div class="card-body" style="padding:16px 24px;">
+                <div class="settings-row">
+                    <div>
+                        <div style="font-weight:500;">Sample Rate</div>
+                        <div style="font-size:11px;color:var(--text-dim);">Process every N-th frame</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <input type="range" id="sampleRate" min="10" max="90" value="30" step="10" style="width:80px;" oninput="document.getElementById('sampleRateVal').textContent=this.value">
+                        <span style="font-size:13px;color:var(--accent);min-width:24px;" id="sampleRateVal">30</span>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <div>
+                        <div style="font-weight:500;">Confidence Threshold</div>
+                        <div style="font-size:11px;color:var(--text-dim);">Minimum similarity score</div>
+                    </div>
+                    <span class="badge badge-info">40% default</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Results -->
+    <div>
+        <div class="card" style="margin-bottom:20px;" id="analyzeCard">
+            <div class="card-body" style="text-align:center;padding:48px 32px;">
+                <div style="font-size:48px;margin-bottom:16px;">🔍</div>
+                <div style="font-family:var(--font-head);font-size:18px;font-weight:700;margin-bottom:8px;">Ready to Analyze</div>
+                <div style="font-size:13px;color:var(--text-dim);margin-bottom:24px;" id="selectedVideoLabel">Select a video to begin facial recognition</div>
+                <button class="btn btn-primary btn-lg" id="runBtn" onclick="runRecognition()" disabled>
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Run Recognition
+                </button>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="results-section" id="resultsSection">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Recognition Results</span>
+                    <span class="badge badge-success" id="resultsCount"></span>
+                </div>
+                <div class="card-body">
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;" id="statsRow"></div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">IDENTIFIED DRIVERS</div>
+                    <div id="driverResults" style="display:flex;flex-direction:column;gap:8px;"></div>
+
+                    <div id="unknownSection" style="display:none;margin-top:16px;">
+                        <div class="divider" style="margin:12px 0;"></div>
+                        <div class="alert alert-warning" id="unknownAlert"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedVideo = null;
+let selectedFile = null;
+
+function selectVideo(filename, card) {
+    selectedVideo = filename;
+    selectedFile = null;
+    document.getElementById('videoUpload').value = '';
+    document.querySelectorAll('.video-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    document.getElementById('selectedVideoLabel').textContent = `Selected: ${filename}`;
+    document.getElementById('runBtn').disabled = false;
+}
+
+function selectUploadedVideo(input) {
+    if (input.files[0]) {
+        selectedFile = input.files[0];
+        selectedVideo = null;
+        document.querySelectorAll('.video-card').forEach(c => c.classList.remove('selected'));
+        document.getElementById('selectedVideoLabel').textContent = `Ready: ${selectedFile.name}`;
+        document.getElementById('runBtn').disabled = false;
+    }
+}
+
+async function runRecognition() {
+    if (!selectedVideo && !selectedFile) { showToast('Please select a video', 'error'); return; }
+
+    const btn = document.getElementById('runBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Analyzing...';
+    showLoader('Running facial recognition on video...');
+
+    const formData = new FormData();
+    formData.append('sample_rate', document.getElementById('sampleRate').value);
+
+    if (selectedFile) {
+        formData.append('video_file', selectedFile);
+    } else {
+        formData.append('video_filename', selectedVideo);
+    }
+
+    try {
+        const res = await fetch('/api/recognize-video', { method: 'POST', body: formData });
+        const data = await res.json();
+        hideLoader();
+
+        if (data.error) {
+            showToast(data.error, 'error');
+        } else {
+            displayResults(data);
+        }
+    } catch(e) {
+        hideLoader();
+        showToast('Recognition failed. Please try again.', 'error');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Again';
+}
+
+function displayResults(data) {
+    document.getElementById('resultsSection').classList.add('visible');
+    const summary = data.summary || [];
+    const identified = summary.filter(s => s.driver_id !== 'unknown');
+    const unknown = summary.filter(s => s.driver_id === 'unknown');
+
+    document.getElementById('resultsCount').textContent = `${summary.length} entities found`;
+
+    // Stats
+    document.getElementById('statsRow').innerHTML = `
+        <div style="text-align:center;background:var(--surface2);border-radius:8px;padding:12px;">
+            <div style="font-size:22px;font-weight:800;color:var(--accent);">${data.processed_frames}</div>
+            <div style="font-size:10px;color:var(--text-dim);">FRAMES ANALYZED</div>
+        </div>
+        <div style="text-align:center;background:var(--surface2);border-radius:8px;padding:12px;">
+            <div style="font-size:22px;font-weight:800;color:var(--accent2);">${identified.length}</div>
+            <div style="font-size:10px;color:var(--text-dim);">DRIVERS IDENTIFIED</div>
+        </div>
+        <div style="text-align:center;background:var(--surface2);border-radius:8px;padding:12px;">
+            <div style="font-size:22px;font-weight:800;color:var(--warning);">${(data.fps||0).toFixed(1)}</div>
+            <div style="font-size:10px;color:var(--text-dim);">VIDEO FPS</div>
+        </div>`;
+
+    // Driver cards
+    const container = document.getElementById('driverResults');
+    container.innerHTML = '';
+
+    if (identified.length === 0) {
+        container.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-dim);">
+            <div style="font-size:28px;margin-bottom:8px;">🔍</div>
+            No enrolled drivers identified in this video.
+        </div>`;
+    } else {
+        identified.forEach(s => {
+            const conf = Math.round(s.avg_confidence * 100);
+            const confColor = conf >= 75 ? 'var(--accent)' : conf >= 55 ? 'var(--warning)' : 'var(--danger)';
+            const card = document.createElement('div');
+            card.className = 'result-driver-card';
+            card.innerHTML = `
+                ${s.profile_photo ? `<img src="/static/${s.profile_photo}" class="avatar avatar-lg" style="flex-shrink:0;">` :
+                    `<div class="avatar avatar-lg avatar-placeholder" style="font-size:22px;flex-shrink:0;">👤</div>`}
+                <div style="flex:1;min-width:0;">
+                    <div style="font-family:var(--font-head);font-size:15px;font-weight:700;">${s.driver_name || s.driver_id}</div>
+                    <div style="font-size:11px;color:var(--text-dim);">ID: ${s.driver_id} · ${s.appearances} frame appearances</div>
+                    <div class="confidence-bar-wrap">
+                        <div class="confidence-bar" style="width:${conf}%;background:${confColor};"></div>
+                    </div>
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                    <div style="font-family:var(--font-head);font-size:22px;font-weight:800;color:${confColor};">${conf}%</div>
+                    <div style="font-size:10px;color:var(--text-dim);">confidence</div>
+                </div>`;
+            container.appendChild(card);
+        });
+    }
+
+    // Unknown section
+    if (unknown.length > 0) {
+        document.getElementById('unknownSection').style.display = 'block';
+        document.getElementById('unknownAlert').innerHTML = `
+            ⚠️ <strong>${unknown[0].appearances} frames</strong> contained unrecognized faces. 
+            Consider enrolling any unknown individuals to improve coverage.`;
+    }
+
+    showToast('Recognition complete!', 'success');
+}
+</script>
+{% endblock %}

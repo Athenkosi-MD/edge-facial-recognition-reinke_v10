@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Edge Telematics{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}System overview & recent activity{% endblock %}
+
+{% block content %}
+<div class="grid grid-4" style="margin-bottom:28px;">
+    <div class="stat-card accent">
+        <div class="stat-icon accent">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+            </svg>
+        </div>
+        <div class="stat-label">Active Drivers</div>
+        <div class="stat-value accent">{{ total_drivers }}</div>
+        <div class="stat-meta">Enrolled in system</div>
+    </div>
+    <div class="stat-card blue">
+        <div class="stat-icon blue">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+        </div>
+        <div class="stat-label">Recognition Events</div>
+        <div class="stat-value blue">{{ total_events }}</div>
+        <div class="stat-meta">All time identifications</div>
+    </div>
+    <div class="stat-card warn">
+        <div class="stat-icon warn">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
+        </div>
+        <div class="stat-label">Videos Processed</div>
+        <div class="stat-value" style="color:var(--warning);">—</div>
+        <div class="stat-meta">Fleet footage analyzed</div>
+    </div>
+    <div class="stat-card green">
+        <div class="stat-icon green">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+        </div>
+        <div class="stat-label">System Status</div>
+        <div class="stat-value" style="color:#2e7d32;font-size:20px;margin-top:2px;display:flex;align-items:center;gap:8px;">
+            <span class="status-dot"></span> ONLINE
+        </div>
+        <div class="stat-meta">All services running</div>
+    </div>
+</div>
+
+
+<div class="grid grid-2" style="gap:24px;">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Recently Enrolled Drivers</span>
+            <a href="/drivers" class="btn btn-secondary btn-sm">View All</a>
+        </div>
+        <div class="card-body" style="padding:0;">
+            {% if recent_drivers %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Driver</th>
+                        <th>ID</th>
+                        <th>Status</th>
+                        <th>Enrolled</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in recent_drivers %}
+                    <tr>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                {% if d.photo_url %}
+                                <img src="{{ d.photo_url }}" class="avatar" alt="">
+                                {% else %}
+                                <div class="avatar avatar-placeholder">{{ d.first_name[0] }}{{ d.last_name[0] }}</div>
+                                {% endif %}
+                                <div>
+                                    <div style="font-weight:500;">{{ d.first_name }} {{ d.last_name }}</div>
+                                    <div style="font-size:11px;color:var(--text-dim);">{{ d.photo_count }} samples</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span style="font-size:11px;color:var(--accent);">{{ d.driver_id }}</span></td>
+                        <td>
+                            {% include '_status_badge.html' %}
+                        </td>
+                        <td style="font-size:11px;color:var(--text-dim);">{{ d.enrollment_date.strftime('%b %d, %Y') if d.enrollment_date }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="padding:40px;text-align:center;color:var(--text-dim);">
+                <div style="font-size:32px;margin-bottom:12px;">👤</div>
+                <div>No drivers enrolled yet.</div>
+                <a href="/enroll" class="btn btn-primary" style="margin-top:16px;">Enroll First Driver</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Recent Recognition Events</span>
+            <a href="/recognition" class="btn btn-secondary btn-sm">Run Recognition</a>
+        </div>
+        <div class="card-body" style="padding:0;">
+            {% if recent_events %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Driver</th>
+                        <th>Video</th>
+                        <th>Confidence</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ev in recent_events %}
+                    <tr>
+                        <td>
+                            {% if ev.driver %}
+                            <div style="font-weight:500;">{{ ev.driver.first_name }} {{ ev.driver.last_name }}</div>
+                            {% else %}
+                            <span style="color:var(--text-dim);">Unknown</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:11px;color:var(--text-dim);">{{ ev.video_filename }}</td>
+                        <td>
+                            {% if ev.confidence %}
+                            <span class="badge {% if ev.confidence > 0.75 %}badge-success{% elif ev.confidence > 0.5 %}badge-warning{% else %}badge-danger{% endif %}">
+                                {{ "%.0f"|format(ev.confidence*100) }}%
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:11px;color:var(--text-dim);">{{ ev.timestamp.strftime('%b %d, %H:%M') if ev.timestamp }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="padding:40px;text-align:center;color:var(--text-dim);">
+                <div style="font-size:32px;margin-bottom:12px;">🎥</div>
+                <div>No recognition events yet.</div>
+                <a href="/recognition" class="btn btn-primary" style="margin-top:16px;">Analyze Video</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="grid grid-3" style="margin-top:24px;gap:16px;">
+    <a href="/enroll" style="text-decoration:none;">
+        <div class="card" style="padding:22px;cursor:pointer;transition:border-color 0.15s;border-color:transparent;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:10px;">🪪</div>
+            <div style="font-family:var(--font-head);font-size:15px;font-weight:700;margin-bottom:5px;">Enroll New Driver</div>
+            <div style="font-size:12px;color:var(--text-dim);">Register a driver using webcam or photo upload</div>
+        </div>
+    </a>
+    <a href="/recognition" style="text-decoration:none;">
+        <div class="card" style="padding:22px;cursor:pointer;transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:10px;">🎬</div>
+            <div style="font-family:var(--font-head);font-size:15px;font-weight:700;margin-bottom:5px;">Analyze Video</div>
+            <div style="font-size:12px;color:var(--text-dim);">Run facial recognition on event footage</div>
+        </div>
+    </a>
+    <a href="/drivers" style="text-decoration:none;">
+        <div class="card" style="padding:22px;cursor:pointer;transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--warning)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:10px;">📋</div>
+            <div style="font-family:var(--font-head);font-size:15px;font-weight:700;margin-bottom:5px;">Driver Registry</div>
+            <div style="font-size:12px;color:var(--text-dim);">View and manage all enrolled drivers</div>
+        </div>
+    </a>
+</div>
+{% endblock %}

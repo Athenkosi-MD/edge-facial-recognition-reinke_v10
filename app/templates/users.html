@@ -1,0 +1,1105 @@
+{% extends "base.html" %}
+{% block title %}User Management – Edge Telematics{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block page_subtitle %}Create, edit, deactivate and export system users{% endblock %}
+
+{% block content %}
+{% set cur_role = session.get('role', '') %}
+<style>
+.um-toolbar {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 24px; flex-wrap: wrap;
+}
+.um-toolbar .spacer { flex: 1; }
+.btn { display:inline-flex; align-items:center; gap:6px;
+       padding:9px 18px; border-radius:8px; font-size:.85rem;
+       font-weight:600; font-family:inherit; cursor:pointer;
+       border:none; transition:background .15s, opacity .15s; }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:var(--accent-mid); }
+.btn-success { background:#2e7d32; color:#fff; }
+.btn-success:hover { background:#388e3c; }
+.btn-outline { background:#fff; color:var(--accent); border:1.5px solid var(--accent); }
+.btn-outline:hover { background:var(--accent-pale); }
+.btn-danger  { background:#e53935; color:#fff; }
+.btn-danger:hover  { background:#c62828; }
+.btn-sm { padding:6px 12px; font-size:.78rem; }
+.btn-warning { background:#f57c00; color:#fff; }
+.btn-warning:hover { background:#ef6c00; }
+
+.card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; overflow:hidden;
+}
+.user-table { width:100%; border-collapse:collapse; }
+.user-table th, .user-table td {
+    padding:12px 16px; text-align:left;
+    border-bottom:1px solid var(--border-light); font-size:.85rem;
+}
+.user-table th {
+    background:var(--surface2); color:var(--text-secondary);
+    font-size:.72rem; font-weight:600; text-transform:uppercase;
+    letter-spacing:.06em;
+}
+.user-table tr:last-child td { border-bottom:none; }
+.user-table tbody tr:hover { background:var(--accent-pale); }
+
+.badge {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 10px; border-radius:20px; font-size:.72rem; font-weight:600;
+}
+.badge-admin   { background:#e3f0fc; color:#1565c0; }
+.badge-support { background:#fff3e0; color:#e65100; }
+.badge-client  { background:#f0f4f8; color:#4a5f78; }
+.badge-viewer  { background:#f0f4f8; color:#4a5f78; }
+.badge-active  { background:#e8f5e9; color:#2e7d32; }
+.badge-inactive{ background:#fdecea; color:#e53935; }
+
+.action-row { display:flex; gap:6px; }
+
+.modal-overlay {
+    display:none; position:fixed; inset:0;
+    background:rgba(10,22,40,.45); z-index:1000;
+    align-items:center; justify-content:center;
+}
+.modal-overlay.open { display:flex; }
+.modal {
+    background:var(--surface); border-radius:14px; width:480px;
+    max-width:96vw; padding:32px; box-shadow:0 12px 48px rgba(0,0,0,.22);
+    max-height:90vh; overflow-y:auto;
+}
+.modal-title { font-size:1.1rem; font-weight:700; color:var(--text-primary); margin-bottom:24px; }
+.form-group { margin-bottom:18px; }
+label { display:block; font-size:.75rem; font-weight:600;
+        color:var(--text-secondary); margin-bottom:6px;
+        text-transform:uppercase; letter-spacing:.05em; }
+input[type=text], input[type=email], input[type=password], select, textarea {
+    width:100%; padding:10px 12px; border:1.5px solid var(--border);
+    border-radius:8px; font-size:.88rem; font-family:inherit;
+    color:var(--text-primary); background:var(--bg); outline:none;
+    transition:border-color .15s; box-sizing:border-box;
+}
+input:focus, select:focus, textarea:focus { border-color:var(--accent-mid); background:#fff; }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
+
+.import-zone {
+    border:2px dashed var(--border); border-radius:10px;
+    padding:28px; text-align:center; cursor:pointer;
+    transition:border-color .15s, background .15s;
+}
+.import-zone:hover, .import-zone.drag { border-color:var(--accent); background:var(--accent-pale); }
+.import-zone input { display:none; }
+.import-result {
+    margin-top:12px; padding:10px 14px; border-radius:8px;
+    font-size:.84rem; display:none;
+}
+.import-result.ok  { background:#e8f5e9; color:#2e7d32; }
+.import-result.err { background:#fdecea; color:#e53935; }
+
+/* Tabs */
+.tab-bar { display:flex; gap:4px; margin-bottom:24px; border-bottom:2px solid var(--border); }
+.tab-btn { padding:10px 20px; border:none; background:none; cursor:pointer;
+           font-size:.88rem; font-weight:600; color:var(--text-secondary);
+           border-bottom:2px solid transparent; margin-bottom:-2px; }
+.tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+
+/* Custom fields table */
+.cf-table { width:100%; border-collapse:collapse; }
+.cf-table th, .cf-table td {
+    padding:10px 14px; text-align:left;
+    border-bottom:1px solid var(--border-light); font-size:.84rem;
+}
+.cf-table th { background:var(--surface2); color:var(--text-secondary);
+               font-size:.72rem; font-weight:600; text-transform:uppercase; }
+
+/* Audit log table */
+.log-table { width:100%; border-collapse:collapse; font-size:.8rem; }
+.log-table th, .log-table td {
+    padding:8px 12px; text-align:left;
+    border-bottom:1px solid var(--border-light);
+}
+.log-table th { background:var(--surface2); color:var(--text-secondary);
+                font-size:.72rem; font-weight:600; text-transform:uppercase; }
+
+/* Toggle switch */
+.toggle-wrap { display:inline-flex; align-items:center; gap:8px; cursor:pointer; }
+.toggle-switch { position:relative; width:36px; height:20px; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; inset:0; background:#ccc; border-radius:20px; transition:.3s; }
+.toggle-slider:before { content:''; position:absolute; width:14px; height:14px;
+    left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.3s; }
+.toggle-switch input:checked + .toggle-slider { background:var(--accent); }
+.toggle-switch input:checked + .toggle-slider:before { transform:translateX(16px); }
+
+#toast {
+    position:fixed; bottom:28px; right:28px; z-index:2000;
+    padding:12px 22px; border-radius:10px; font-size:.875rem;
+    font-weight:500; box-shadow:0 4px 20px rgba(0,0,0,.18);
+    opacity:0; transition:opacity .3s; pointer-events:none;
+}
+#toast.show { opacity:1; }
+#toast.ok  { background:#2e7d32; color:#fff; }
+#toast.err { background:#e53935; color:#fff; }
+</style>
+
+<!-- Tab navigation -->
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('users')">Users</button>
+    <button class="tab-btn" onclick="switchTab('custom-fields')">Driver Custom Fields</button>
+    <button class="tab-btn" onclick="switchTab('permissions')">Permissions</button>
+    <button class="tab-btn" onclick="switchTab('audit')">Audit Log</button>
+</div>
+
+<!-- ════════ TAB: USERS ════════ -->
+<div class="tab-pane active" id="tab-users">
+<div class="um-toolbar">
+    <button class="btn btn-primary" onclick="openCreate()">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New User
+    </button>
+    <a href="{{ url_for('auth.export_users') }}" class="btn btn-success">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Export Excel
+    </a>
+    {% if cur_role == 'admin' %}
+    <button class="btn btn-outline" onclick="document.getElementById('importModal').classList.add('open')">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Import Excel
+    </button>
+    {% endif %}
+    <div class="spacer"></div>
+    <span style="font-size:.82rem;color:var(--text-secondary);">{{ users|length }} user{{ 's' if users|length != 1 }}</span>
+</div>
+
+<div class="card">
+    <table class="user-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for u in users %}
+        <tr id="row-{{ u.id }}">
+            <td style="color:var(--text-secondary)">{{ u.id }}</td>
+            <td style="font-weight:600">{{ u.username }}</td>
+            <td style="color:var(--text-secondary)">{{ u.email }}</td>
+            <td><span class="badge badge-{{ u.role }}">{{ u.role }}</span></td>
+            <td>
+                <span class="badge badge-{{ 'active' if u.is_active else 'inactive' }}" id="status-{{ u.id }}">
+                    {{ 'Active' if u.is_active else 'Inactive' }}
+                </span>
+            </td>
+            <td style="color:var(--text-secondary)">
+                {{ u.last_login.strftime('%d %b %Y %H:%M') if u.last_login else '—' }}
+            </td>
+            <td>
+                <div class="action-row">
+                    {# Edit: admin can edit anyone; support can only edit client users #}
+                    {% if cur_role == 'admin' or (cur_role == 'support' and u.role == 'client') %}
+                    <button class="btn btn-outline btn-sm"
+                        onclick="openEdit({{ u.id }},'{{ u.username }}','{{ u.email }}','{{ u.role }}')">
+                        Edit
+                    </button>
+                    <button class="btn btn-outline btn-sm"
+                        onclick="openResetPassword({{ u.id }}, '{{ u.username }}')">
+                        Reset Password
+                    </button>
+                    {% endif %}
+                    {% if u.user_id != current_user.user_id %}
+                        {% if cur_role == 'admin' or (cur_role == 'support' and u.role == 'client') %}
+                        <button class="btn btn-outline btn-sm" id="toggle-btn-{{ u.id }}"
+                            onclick="toggleUser({{ u.id }})">
+                            {{ 'Deactivate' if u.is_active else 'Activate' }}
+                        </button>
+                        {% endif %}
+                        {% if cur_role == 'admin' %}
+                        <button class="btn btn-danger btn-sm"
+                            onclick="deleteUser({{ u.id }}, '{{ u.username }}')">
+                            Delete
+                        </button>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">No users found.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+</div><!-- /tab-users -->
+
+<!-- ════════ TAB: CUSTOM FIELDS ════════ -->
+<div class="tab-pane" id="tab-custom-fields">
+<div class="um-toolbar">
+    {% if cur_role == 'admin' %}
+    <button class="btn btn-primary" onclick="openCreateField()">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add Custom Field
+    </button>
+    {% endif %}
+    <div class="spacer"></div>
+    <span style="font-size:.82rem;color:var(--text-secondary);">Driver profile custom fields</span>
+</div>
+
+{% if cur_role == 'support' %}
+<div style="background:#fff3e0;border:1px solid #ffe0b2;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:.84rem;color:#e65100;">
+    As a Support user you can toggle fields active/inactive and change required status, but cannot create or delete fields.
+</div>
+{% endif %}
+
+<div class="card">
+    <table class="cf-table" id="cfTable">
+        <thead>
+            <tr>
+                <th style="width:60px;">Active</th>
+                <th>Field Name</th>
+                <th>Type</th>
+                <th>Required</th>
+                <th>Order</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="cfBody">
+            <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-secondary)">Loading…</td></tr>
+        </tbody>
+    </table>
+</div>
+</div><!-- /tab-custom-fields -->
+
+<!-- ════════ TAB: PERMISSIONS ════════ -->
+<div class="tab-pane" id="tab-permissions">
+<style>
+.perm-table { width:100%; border-collapse:collapse; }
+.perm-table th, .perm-table td {
+    padding:12px 16px; text-align:left;
+    border-bottom:1px solid var(--border-light); font-size:.84rem;
+}
+.perm-table th {
+    background:var(--surface2); color:var(--text-secondary);
+    font-size:.72rem; font-weight:600; text-transform:uppercase;
+    letter-spacing:.06em; white-space:nowrap;
+}
+.perm-table th.role-col { text-align:center; width:110px; }
+.perm-table td.role-col { text-align:center; }
+.perm-cell {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:28px; height:28px; border-radius:50%;
+    font-size:15px;
+}
+.perm-yes { background:#e8f5e9; color:#2e7d32; }
+.perm-no  { background:#fdecea; color:#e53935; }
+.perm-group-header td {
+    background:var(--accent-pale); color:var(--accent);
+    font-weight:700; font-size:.78rem; letter-spacing:.06em;
+    text-transform:uppercase; padding:8px 16px;
+}
+.perm-row:hover { background:var(--accent-pale); }
+.perm-note { font-size:.72rem; color:var(--text-secondary); margin-top:4px; font-style:italic; }
+
+/* Inline editable cell */
+.perm-toggle { cursor:pointer; user-select:none; }
+.perm-toggle:hover .perm-cell { transform:scale(1.15); transition:transform .12s; }
+
+.perm-save-bar {
+    display:none; align-items:center; gap:12px;
+    padding:12px 16px; background:var(--accent-pale);
+    border: 1px solid var(--accent); border-radius:8px;
+    margin-bottom:16px; font-size:.84rem;
+}
+.perm-save-bar.visible { display:flex; }
+</style>
+
+<div style="margin-bottom:16px;">
+    <p style="font-size:.85rem;color:var(--text-secondary);margin:0 0 12px;">
+        This table shows what each role can do. 
+        {% if cur_role == 'admin' %}
+        Click a cell to toggle a permission, then save. Permissions marked 🔒 are fixed by system policy and cannot be changed.
+        {% else %}
+        Permissions can only be edited by Admins.
+        {% endif %}
+    </p>
+    {% if cur_role == 'admin' %}
+    <div class="perm-save-bar" id="permSaveBar">
+        <span>⚠️ You have unsaved permission changes.</span>
+        <button class="btn btn-primary btn-sm" onclick="savePermissions()">Save Permissions</button>
+        <button class="btn btn-outline btn-sm" onclick="discardPermissions()">Discard</button>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card" style="overflow-x:auto;">
+<table class="perm-table" id="permTable">
+<thead>
+    <tr>
+        <th style="min-width:220px;">Permission</th>
+        <th class="role-col">Admin</th>
+        <th class="role-col">Support</th>
+        <th class="role-col">Client</th>
+    </tr>
+</thead>
+<tbody id="permBody">
+</tbody>
+</table>
+</div>
+</div><!-- /tab-permissions -->
+
+<!-- ════════ TAB: AUDIT LOG ════════ -->
+<div class="tab-pane" id="tab-audit">
+<div class="um-toolbar">
+    <div class="spacer"></div>
+    <button class="btn btn-outline btn-sm" onclick="loadLogs(1)">Refresh</button>
+</div>
+<div class="card" style="overflow-x:auto;">
+    <table class="log-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Details</th>
+                <th>IP</th>
+            </tr>
+        </thead>
+        <tbody id="logBody">
+            {% for log in logs %}
+            <tr>
+                <td style="white-space:nowrap;color:var(--text-secondary)">{{ log.timestamp.strftime('%d %b %Y %H:%M') if log.timestamp else '—' }}</td>
+                <td style="font-weight:600">{{ log.username or '—' }}</td>
+                <td><span class="badge" style="background:#e8f0fe;color:#1a73e8;">{{ log.action }}</span></td>
+                <td style="color:var(--text-secondary)">{{ log.target_type or '' }} {{ log.target_id or '' }}</td>
+                <td style="color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ log.details or '' }}</td>
+                <td style="color:var(--text-secondary);font-size:.75rem;">{{ log.ip_address or '' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-secondary)">No audit logs yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+</div><!-- /tab-audit -->
+
+
+<!-- ── Create User Modal ── -->
+<div class="modal-overlay" id="createModal">
+    <div class="modal">
+        <div class="modal-title">Create New User</div>
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="c-username" placeholder="johndoe">
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="c-email" placeholder="john@example.com">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="c-password" placeholder="Min 6 characters">
+        </div>
+        <div class="form-group">
+            <label>Role</label>
+            <select id="c-role">
+                <option value="client">Client</option>
+                {% if cur_role == 'admin' %}
+                <option value="support">Support</option>
+                <option value="admin">Admin</option>
+                {% endif %}
+            </select>
+        </div>
+        <div style="background:#f0f4f8;border-radius:8px;padding:12px 14px;font-size:.8rem;color:#4a5f78;margin-bottom:4px;">
+            <strong>Role permissions:</strong><br>
+            <b>Admin</b> – Full access including user & field management<br>
+            <b>Support</b> – Enroll/view drivers, manage client users, edit fields<br>
+            <b>Client</b> – Enroll, view & edit drivers, export driver list
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeModal('createModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitCreate()">Create User</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Edit User Modal ── -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal">
+        <div class="modal-title">Edit User</div>
+        <input type="hidden" id="e-id">
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="e-username">
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="e-email">
+        </div>
+        <div class="form-group">
+            <label>New Password <span style="font-weight:400;font-size:.72rem">(leave blank to keep)</span></label>
+            <input type="password" id="e-password" placeholder="••••••••">
+        </div>
+        <div class="form-group" id="e-role-group">
+            <label>Role</label>
+            <select id="e-role">
+                <option value="client">Client</option>
+                {% if cur_role == 'admin' %}
+                <option value="support">Support</option>
+                <option value="admin">Admin</option>
+                {% endif %}
+            </select>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeModal('editModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitEdit()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ── Reset Password Modal ── -->
+<div class="modal-overlay" id="resetPwModal">
+    <div class="modal">
+        <div class="modal-title">Reset Password</div>
+        <input type="hidden" id="rp-id">
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+            Resetting password for: <strong id="rp-username"></strong>
+        </p>
+        <div class="form-group">
+            <label>New Password</label>
+            <input type="password" id="rp-password" placeholder="Min 6 characters">
+        </div>
+        <div class="form-group">
+            <label>Confirm Password</label>
+            <input type="password" id="rp-confirm" placeholder="Repeat password">
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeModal('resetPwModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitResetPassword()">Reset Password</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Import Modal ── -->
+<div class="modal-overlay" id="importModal">
+    <div class="modal">
+        <div class="modal-title">Import Users from Excel</div>
+        <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:16px">
+            Excel columns (row 1 = header, ignored):<br>
+            <strong>A: username &nbsp; B: email &nbsp; C: password &nbsp; D: role (admin/support/client)</strong>
+        </p>
+        <label class="import-zone" id="dropZone" for="xlsxFile">
+            <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="var(--accent)" stroke-width="1.5" style="margin-bottom:8px">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <div style="font-weight:600;color:var(--text-primary)">Drop file here or click to browse</div>
+            <div style="font-size:.78rem;color:var(--text-secondary);margin-top:4px">.xlsx files only</div>
+            <input type="file" id="xlsxFile" accept=".xlsx">
+        </label>
+        <div class="import-result" id="importResult"></div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeModal('importModal')">Close</button>
+            <button class="btn btn-success" onclick="submitImport()">Upload & Import</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Create Custom Field Modal ── -->
+<div class="modal-overlay" id="cfCreateModal">
+    <div class="modal">
+        <div class="modal-title">Add Custom Field</div>
+        <div class="form-group">
+            <label>Field Name *</label>
+            <input type="text" id="cf-name" placeholder="e.g. License Number">
+        </div>
+        <div class="form-group">
+            <label>Field Type *</label>
+            <select id="cf-type" onchange="toggleOptionsField()">
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="date">Date</option>
+                <option value="single_select">Single Select</option>
+                <option value="multi_select">Multi Select</option>
+                <option value="boolean">Boolean (Yes/No)</option>
+            </select>
+        </div>
+        <div class="form-group" id="cf-options-group" style="display:none;">
+            <label>Options <span style="font-weight:400;font-size:.72rem">(one per line)</span></label>
+            <textarea id="cf-options" rows="4" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:12px;">
+            <label style="margin:0;">Active</label>
+            <label class="toggle-wrap">
+                <span class="toggle-switch">
+                    <input type="checkbox" id="cf-active" checked>
+                    <span class="toggle-slider"></span>
+                </span>
+            </label>
+            <label style="margin:0 0 0 16px;">Required</label>
+            <label class="toggle-wrap">
+                <span class="toggle-switch">
+                    <input type="checkbox" id="cf-required">
+                    <span class="toggle-slider"></span>
+                </span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label>Sort Order</label>
+            <input type="number" id="cf-order" value="0" min="0">
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeModal('cfCreateModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitCreateField()">Create Field</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Edit Custom Field Modal ── -->
+<div class="modal-overlay" id="cfEditModal">
+    <div class="modal">
+        <div class="modal-title">Edit Custom Field</div>
+        <input type="hidden" id="cfe-id">
+        <div class="form-group" id="cfe-name-group">
+            <label>Field Name *</label>
+            <input type="text" id="cfe-name">
+        </div>
+        <div class="form-group" id="cfe-type-group">
+            <label>Field Type</label>
+            <select id="cfe-type" onchange="toggleEditOptionsField()">
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="date">Date</option>
+                <option value="single_select">Single Select</option>
+                <option value="multi_select">Multi Select</option>
+                <option value="boolean">Boolean (Yes/No)</option>
+            </select>
+        </div>
+        <div class="form-group" id="cfe-options-group" style="display:none;">
+            <label>Options <span style="font-weight:400;font-size:.72rem">(one per line)</span></label>
+            <textarea id="cfe-options" rows="4"></textarea>
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:12px;">
+            <label style="margin:0;">Active</label>
+            <label class="toggle-wrap">
+                <span class="toggle-switch">
+                    <input type="checkbox" id="cfe-active">
+                    <span class="toggle-slider"></span>
+                </span>
+            </label>
+            <label style="margin:0 0 0 16px;">Required</label>
+            <label class="toggle-wrap">
+                <span class="toggle-switch">
+                    <input type="checkbox" id="cfe-required">
+                    <span class="toggle-slider"></span>
+                </span>
+            </label>
+        </div>
+        <div class="form-group" id="cfe-order-group">
+            <label>Sort Order</label>
+            <input type="number" id="cfe-order" value="0" min="0">
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeModal('cfEditModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitEditField()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const CUR_ROLE = '{{ cur_role }}';
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    event.target.classList.add('active');
+    if (tab === 'custom-fields') loadCustomFields();
+    if (tab === 'permissions')   renderPermTable();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, ok=true) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show ' + (ok ? 'ok' : 'err');
+    setTimeout(() => t.className = '', 3000);
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── User CRUD ─────────────────────────────────────────────────────────────────
+function openCreate() {
+    ['c-username','c-email','c-password'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('c-role').value = 'client';
+    document.getElementById('createModal').classList.add('open');
+}
+
+function openEdit(id, username, email, role) {
+    document.getElementById('e-id').value       = id;
+    document.getElementById('e-username').value  = username;
+    document.getElementById('e-email').value     = email;
+    document.getElementById('e-password').value  = '';
+    const roleEl = document.getElementById('e-role');
+    if (roleEl) roleEl.value = role;
+    document.getElementById('editModal').classList.add('open');
+}
+
+async function submitCreate() {
+    const body = {
+        username: document.getElementById('c-username').value.trim(),
+        email:    document.getElementById('c-email').value.trim(),
+        password: document.getElementById('c-password').value,
+        role:     document.getElementById('c-role').value,
+    };
+    const res  = await fetch('/users/create', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) { toast('User created!'); closeModal('createModal'); setTimeout(()=>location.reload(),800); }
+    else { toast(data.message, false); }
+}
+
+
+function openResetPassword(id, username) {
+    document.getElementById('rp-id').value = id;
+    document.getElementById('rp-username').textContent = username;
+    document.getElementById('rp-password').value = '';
+    document.getElementById('rp-confirm').value = '';
+    document.getElementById('resetPwModal').classList.add('open');
+}
+
+async function submitResetPassword() {
+    const id  = document.getElementById('rp-id').value;
+    const pw  = document.getElementById('rp-password').value;
+    const cfw = document.getElementById('rp-confirm').value;
+    if (pw.length < 6) { toast('Password must be at least 6 characters.', false); return; }
+    if (pw !== cfw)    { toast('Passwords do not match.', false); return; }
+    const res  = await fetch(`/users/${id}/reset-password`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ password: pw })
+    });
+    const data = await res.json();
+    if (data.success) { toast(data.message); closeModal('resetPwModal'); }
+    else { toast(data.message, false); }
+}
+
+async function submitEdit() {
+    const id   = document.getElementById('e-id').value;
+    const roleEl = document.getElementById('e-role');
+    const body = {
+        username: document.getElementById('e-username').value.trim(),
+        email:    document.getElementById('e-email').value.trim(),
+        password: document.getElementById('e-password').value,
+        role:     roleEl ? roleEl.value : undefined,
+    };
+    const res  = await fetch(`/users/${id}/update`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) { toast('User updated!'); closeModal('editModal'); setTimeout(()=>location.reload(),800); }
+    else { toast(data.message, false); }
+}
+
+async function toggleUser(id) {
+    const res  = await fetch(`/users/${id}/toggle`, { method:'POST' });
+    const data = await res.json();
+    if (data.success) {
+        const badge  = document.getElementById(`status-${id}`);
+        const btn    = document.getElementById(`toggle-btn-${id}`);
+        if (data.is_active) {
+            badge.textContent='Active'; badge.className='badge badge-active';
+            if(btn) btn.textContent='Deactivate';
+        } else {
+            badge.textContent='Inactive'; badge.className='badge badge-inactive';
+            if(btn) btn.textContent='Activate';
+        }
+        toast(data.message);
+    } else { toast(data.message, false); }
+}
+
+async function deleteUser(id, username) {
+    if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+    const res  = await fetch(`/users/${id}/delete`, { method:'POST' });
+    const data = await res.json();
+    if (data.success) {
+        document.getElementById(`row-${id}`).remove();
+        toast('User deleted.');
+    } else { toast(data.message, false); }
+}
+
+// Drag-and-drop styling
+const dz = document.getElementById('dropZone');
+if(dz){
+    ['dragenter','dragover'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(e => dz.addEventListener(e, () => dz.classList.remove('drag')));
+    dz.addEventListener('drop', ev => {
+        ev.preventDefault();
+        document.getElementById('xlsxFile').files = ev.dataTransfer.files;
+    });
+}
+
+async function submitImport() {
+    const file = document.getElementById('xlsxFile').files[0];
+    if (!file) { toast('Please select a file first.', false); return; }
+    const fd = new FormData();
+    fd.append('file', file);
+    const res  = await fetch('/users/import', { method:'POST', body:fd });
+    const data = await res.json();
+    const box  = document.getElementById('importResult');
+    box.style.display = 'block';
+    box.className      = 'import-result ' + (data.success ? 'ok' : 'err');
+    box.textContent    = data.message;
+    if (data.success) setTimeout(() => location.reload(), 1800);
+}
+
+// ── Custom Fields ─────────────────────────────────────────────────────────────
+let customFields = [];
+
+async function loadCustomFields() {
+    const res = await fetch('/api/custom-fields');
+    if(!res.ok){ document.getElementById('cfBody').innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:#e53935;">Access denied or error loading fields.</td></tr>'; return; }
+    const data = await res.json();
+    customFields = data.fields || [];
+    renderCustomFields();
+}
+
+function renderCustomFields() {
+    const tbody = document.getElementById('cfBody');
+    if(!customFields.length){
+        tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-secondary)">No custom fields defined yet.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = customFields.map(f => `
+        <tr id="cf-row-${f.id}">
+            <td>
+                <label class="toggle-wrap">
+                    <span class="toggle-switch">
+                        <input type="checkbox" ${f.is_active?'checked':''} onchange="quickToggleField(${f.id},'is_active',this.checked)">
+                        <span class="toggle-slider"></span>
+                    </span>
+                </label>
+            </td>
+            <td style="font-weight:600">${escHtml(f.name)}</td>
+            <td><span class="badge" style="background:#f0f4ff;color:#3949ab;">${formatType(f.field_type)}</span></td>
+            <td>
+                <label class="toggle-wrap">
+                    <span class="toggle-switch">
+                        <input type="checkbox" ${f.is_required?'checked':''} onchange="quickToggleField(${f.id},'is_required',this.checked)">
+                        <span class="toggle-slider"></span>
+                    </span>
+                </label>
+            </td>
+            <td style="color:var(--text-secondary)">${f.sort_order}</td>
+            <td>
+                <div class="action-row">
+                    <button class="btn btn-outline btn-sm" onclick="openEditField(${f.id})">Edit</button>
+                    ${CUR_ROLE === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteField(${f.id}, '${escHtml(f.name)}')">Delete</button>` : ''}
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function formatType(t) {
+    return {text:'Text',number:'Number',date:'Date',single_select:'Single Select',multi_select:'Multi Select',boolean:'Boolean'}[t] || t;
+}
+
+function escHtml(s){ return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+async function quickToggleField(id, key, val) {
+    const body = {}; body[key] = val;
+    const res = await fetch(`/api/custom-fields/${id}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(data.success){ toast('Field updated'); }
+    else { toast(data.message||'Error', false); loadCustomFields(); }
+}
+
+function toggleOptionsField() {
+    const t = document.getElementById('cf-type').value;
+    document.getElementById('cf-options-group').style.display = (t==='single_select'||t==='multi_select') ? '' : 'none';
+}
+function toggleEditOptionsField() {
+    const t = document.getElementById('cfe-type').value;
+    document.getElementById('cfe-options-group').style.display = (t==='single_select'||t==='multi_select') ? '' : 'none';
+}
+
+function openCreateField() {
+    document.getElementById('cf-name').value='';
+    document.getElementById('cf-type').value='text';
+    document.getElementById('cf-options').value='';
+    document.getElementById('cf-active').checked=true;
+    document.getElementById('cf-required').checked=false;
+    document.getElementById('cf-order').value=customFields.length;
+    toggleOptionsField();
+    document.getElementById('cfCreateModal').classList.add('open');
+}
+
+async function submitCreateField() {
+    const type = document.getElementById('cf-type').value;
+    const optTxt = document.getElementById('cf-options').value;
+    const opts = (type==='single_select'||type==='multi_select')
+        ? optTxt.split('\n').map(s=>s.trim()).filter(Boolean)
+        : [];
+    const body = {
+        name: document.getElementById('cf-name').value.trim(),
+        field_type: type,
+        is_active: document.getElementById('cf-active').checked,
+        is_required: document.getElementById('cf-required').checked,
+        options: opts,
+        sort_order: parseInt(document.getElementById('cf-order').value)||0,
+    };
+    const res = await fetch('/api/custom-fields', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(data.success){ toast('Field created!'); closeModal('cfCreateModal'); loadCustomFields(); }
+    else { toast(data.message||'Error', false); }
+}
+
+function openEditField(id) {
+    const f = customFields.find(x=>x.id===id);
+    if(!f) return;
+    document.getElementById('cfe-id').value = f.id;
+    document.getElementById('cfe-name').value = f.name;
+    document.getElementById('cfe-type').value = f.field_type;
+    document.getElementById('cfe-options').value = (f.options||[]).join('\n');
+    document.getElementById('cfe-active').checked = f.is_active;
+    document.getElementById('cfe-required').checked = f.is_required;
+    document.getElementById('cfe-order').value = f.sort_order;
+    // Support users cannot rename or retype
+    const isSupport = CUR_ROLE === 'support';
+    document.getElementById('cfe-name').disabled = isSupport;
+    document.getElementById('cfe-type').disabled = isSupport;
+    document.getElementById('cfe-order').disabled = isSupport;
+    toggleEditOptionsField();
+    document.getElementById('cfEditModal').classList.add('open');
+}
+
+async function submitEditField() {
+    const id = parseInt(document.getElementById('cfe-id').value);
+    const type = document.getElementById('cfe-type').value;
+    const optTxt = document.getElementById('cfe-options').value;
+    const opts = (type==='single_select'||type==='multi_select')
+        ? optTxt.split('\n').map(s=>s.trim()).filter(Boolean)
+        : [];
+    const body = {
+        name: document.getElementById('cfe-name').value.trim(),
+        field_type: type,
+        is_active: document.getElementById('cfe-active').checked,
+        is_required: document.getElementById('cfe-required').checked,
+        options: opts,
+        sort_order: parseInt(document.getElementById('cfe-order').value)||0,
+    };
+    const res = await fetch(`/api/custom-fields/${id}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(data.success){ toast('Field updated!'); closeModal('cfEditModal'); loadCustomFields(); }
+    else { toast(data.message||'Error', false); }
+}
+
+async function deleteField(id, name) {
+    if(!confirm(`Delete custom field "${name}"? This will remove all stored values for this field.`)) return;
+    const res = await fetch(`/api/custom-fields/${id}`, { method:'DELETE' });
+    const data = await res.json();
+    if(data.success){ toast('Field deleted.'); loadCustomFields(); }
+    else { toast(data.message||'Error', false); }
+}
+
+// ── Permissions Matrix ────────────────────────────────────────────────────────
+// ── Permission Matrix ─────────────────────────────────────────────────────────
+// Permission definitions: locked[ri]=true means that cell cannot be toggled
+const PERM_DEFS = [
+  { group: 'User Management' },
+  { key:'can_create_admin_user',          label:'Create Admin users',             locked:[true,true,true],   def:[true,false,false] },
+  { key:'can_create_support_user',        label:'Create Support users',           locked:[true,false,true],  def:[true,false,false] },
+  { key:'can_create_client_user',         label:'Create Client users',            locked:[true,false,true],  def:[true,true,false]  },
+  { key:'can_delete_users',               label:'Delete users',                   locked:[true,true,true],   def:[true,false,false] },
+  { group: 'Driver Management' },
+  // Client: enroll / view / edit / export are always granted (locked).
+  { key:'can_enroll_drivers',             label:'Enroll drivers',                 locked:[true,false,true],  def:[true,true,true]   },
+  { key:'can_view_drivers',               label:'View driver profiles',           locked:[true,false,true],  def:[true,true,true]   },
+  { key:'can_modify_driver',              label:'Edit driver information & photos', locked:[true,false,true], def:[true,true,true]  },
+  { key:'can_export_drivers',             label:'Export driver data',             locked:[true,false,true],  def:[true,true,true]   },
+  { key:'can_change_driver_status',       label:'Set driver status (Active / Deleted)',  locked:[true,false,false], def:[true,true,false]  },
+  { key:'can_delete_drivers',             label:'Delete drivers',                 locked:[true,false,false], def:[true,false,false] },
+  { key:'can_review_unidentified',        label:'Review unidentified drivers',    locked:[true,false,false], def:[true,true,true]   },
+  { group: 'Custom Fields' },
+  { key:'can_manage_custom_fields',       label:'View & edit custom fields',      locked:[true,false,false], def:[true,true,false]  },
+  { key:'can_create_delete_custom_fields',label:'Create & delete custom fields',  locked:[true,true,true],   def:[true,false,false] },
+  { group: 'System' },
+  { key:'can_access_recognition',         label:'Run video recognition',          locked:[true,false,false], def:[true,true,false]  },
+  { key:'generate_email_alerts',          label:'Receive email alerts',           locked:[true,false,false], def:[true,true,true]   },
+];
+
+// State: the current matrix values loaded from the server
+let _permState   = {};   // { key: { admin: bool, support: bool, client: bool } }
+let _permChanges = {};   // tracks cells that differ from server snapshot
+let _permLoaded  = false;
+
+// Build default state from PERM_DEFS
+function _permDefaults() {
+  const s = {};
+  PERM_DEFS.filter(d => d.key).forEach(d => {
+    s[d.key] = { admin: d.def[0], support: d.def[1], client: d.def[2] };
+  });
+  return s;
+}
+
+// Load current permissions from the server, then render
+async function renderPermTable() {
+  if (!_permLoaded) {
+    try {
+      const res  = await fetch('/api/permissions');
+      const data = await res.json();
+      // Merge server overrides onto defaults
+      _permState = _permDefaults();
+      const overrides = data.permissions || {};
+      Object.entries(overrides).forEach(([role, perms]) => {
+        Object.entries(perms).forEach(([perm, granted]) => {
+          // Locked cells always show their fixed value, whatever is stored
+          const def = PERM_DEFS.find(d => d.key === perm);
+          const ri  = ['admin','support','client'].indexOf(role);
+          if (def && ri >= 0 && def.locked[ri]) return;
+          if (_permState[perm]) _permState[perm][role] = granted;
+        });
+      });
+      _permChanges = {};
+      _permLoaded  = true;
+    } catch(e) {
+      _permState = _permDefaults();
+      toast('Could not load permissions from server — showing defaults.', false);
+    }
+  }
+  _renderPermRows();
+}
+
+function _renderPermRows() {
+  const tbody  = document.getElementById('permBody');
+  const isAdmin = CUR_ROLE === 'admin';
+  const ROLES  = ['admin','support','client'];
+  let html = '';
+
+  PERM_DEFS.forEach(d => {
+    if (d.group) {
+      html += `<tr class="perm-group-header"><td colspan="4">⚙ ${d.group}</td></tr>`;
+      return;
+    }
+    const perm = _permState[d.key] || { admin: d.def[0], support: d.def[1], client: d.def[2] };
+    html += `<tr class="perm-row" id="prow-${d.key}"><td>${d.label}</td>`;
+    ROLES.forEach((role, ri) => {
+      const val    = perm[role];
+      const locked = d.locked[ri];
+      const icon   = val ? '✓' : '✗';
+      const cls    = val ? 'perm-yes' : 'perm-no';
+      if (!locked && isAdmin) {
+        html += `<td class="role-col perm-toggle" onclick="togglePerm('${d.key}','${role}')" title="Click to toggle">
+                   <span class="perm-cell ${cls}" id="pc-${d.key}-${role}">${icon}</span>
+                 </td>`;
+      } else {
+        html += `<td class="role-col" title="${locked ? 'System enforced — cannot change' : ''}">
+                   <span class="perm-cell ${cls}">${icon}</span>
+                   ${locked ? '<span style="font-size:10px;margin-left:2px;">🔒</span>' : ''}
+                 </td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function togglePerm(key, role) {
+  if (!_permState[key]) return;
+  _permState[key][role] = !_permState[key][role];
+  const cell = document.getElementById(`pc-${key}-${role}`);
+  if (cell) {
+    const val = _permState[key][role];
+    cell.textContent = val ? '✓' : '✗';
+    cell.className   = 'perm-cell ' + (val ? 'perm-yes' : 'perm-no');
+  }
+  // Track this change
+  if (!_permChanges[key]) _permChanges[key] = {};
+  _permChanges[key][role] = _permState[key][role];
+
+  const bar = document.getElementById('permSaveBar');
+  if (bar) bar.classList.add('visible');
+}
+
+async function savePermissions() {
+  // Build array of change objects for the API
+  const changes = [];
+  Object.entries(_permChanges).forEach(([perm, roles]) => {
+    Object.entries(roles).forEach(([role, granted]) => {
+      changes.push({ role, permission: perm, granted });
+    });
+  });
+
+  if (!changes.length) {
+    toast('No changes to save.');
+    return;
+  }
+
+  try {
+    const res  = await fetch('/api/permissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ changes }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(`${data.saved} permission(s) saved!`);
+      _permChanges = {};
+      const bar = document.getElementById('permSaveBar');
+      if (bar) bar.classList.remove('visible');
+    } else {
+      toast(data.message || 'Save failed.', false);
+    }
+  } catch(e) {
+    toast('Network error — could not save.', false);
+  }
+}
+
+function discardPermissions() {
+  _permLoaded  = false;   // force reload from server
+  _permChanges = {};
+  const bar = document.getElementById('permSaveBar');
+  if (bar) bar.classList.remove('visible');
+  renderPermTable();    // re-fetches from server
+}
+
+
+// Close modals on backdrop click
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+    ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
+});
+</script>
+{% endblock %}

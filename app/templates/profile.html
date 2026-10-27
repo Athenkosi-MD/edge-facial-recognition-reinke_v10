@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}My Profile – Edge Telematics{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+{% block page_subtitle %}Change your password{% endblock %}
+
+{% block content %}
+<style>
+.profile-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:36px; max-width:480px;
+}
+.profile-meta {
+    display:flex; align-items:center; gap:16px; margin-bottom:32px;
+    padding-bottom:24px; border-bottom:1px solid var(--border);
+}
+.avatar {
+    width:56px; height:56px; border-radius:50%;
+    background:var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.4rem; font-weight:700; text-transform:uppercase;
+}
+.meta-name { font-size:1.05rem; font-weight:700; color:var(--text-primary); }
+.meta-role { font-size:.78rem; color:var(--text-secondary); margin-top:2px; }
+.badge { display:inline-flex; padding:2px 9px; border-radius:20px; font-size:.7rem; font-weight:600; }
+.badge-admin  { background:#e3f0fc; color:#1565c0; }
+.badge-viewer { background:#f0f4f8; color:#4a5f78; }
+
+.form-group { margin-bottom:18px; }
+label { display:block; font-size:.75rem; font-weight:600; color:var(--text-secondary);
+        margin-bottom:6px; text-transform:uppercase; letter-spacing:.05em; }
+input[type=password] {
+    width:100%; padding:10px 12px; border:1.5px solid var(--border);
+    border-radius:8px; font-size:.88rem; font-family:inherit;
+    color:var(--text-primary); background:var(--bg); outline:none;
+    transition:border-color .15s;
+}
+input:focus { border-color:var(--accent-mid); background:#fff; }
+.btn { display:inline-flex; align-items:center; gap:6px;
+       padding:10px 22px; border-radius:8px; font-size:.875rem;
+       font-weight:600; font-family:inherit; cursor:pointer;
+       border:none; background:var(--accent); color:#fff;
+       transition:background .15s; }
+.btn:hover { background:var(--accent-mid); }
+.alert { border-radius:8px; padding:11px 14px; font-size:.85rem; margin-bottom:20px; }
+.alert-err { background:#fdecea; color:#e53935; border:1px solid rgba(229,57,53,.3); }
+.alert-ok  { background:#e8f5e9; color:#2e7d32; border:1px solid rgba(46,125,50,.3); }
+</style>
+
+<div class="profile-card">
+    <div class="profile-meta">
+        <div class="avatar">{{ current_user.username[0] }}</div>
+        <div>
+            <div class="meta-name">{{ current_user.username }}</div>
+            <div class="meta-role">{{ current_user.email }}</div>
+            <span class="badge badge-{{ current_user.role }}" style="margin-top:4px">{{ current_user.role }}</span>
+        </div>
+    </div>
+
+    {% if error %}<div class="alert alert-err">{{ error }}</div>{% endif %}
+    {% if success %}<div class="alert alert-ok">{{ success }}</div>{% endif %}
+
+    <form method="post" action="{{ url_for('auth.profile') }}">
+        <div class="form-group">
+            <label>Current Password</label>
+            <input type="password" name="old_password" required placeholder="••••••••">
+        </div>
+        <div class="form-group">
+            <label>New Password</label>
+            <input type="password" name="new_password" required placeholder="Min 6 characters">
+        </div>
+        <div class="form-group">
+            <label>Confirm New Password</label>
+            <input type="password" name="confirm_password" required placeholder="Repeat new password">
+        </div>
+        <button type="submit" class="btn">Update Password</button>
+    </form>
+</div>
+{% endblock %}

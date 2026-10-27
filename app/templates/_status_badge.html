@@ -1,0 +1,3 @@
+{# Status badge. Expects `d` (a Driver) in scope. Statuses: Active, Deleted. #}
+{% if d.is_deleted %}<span class="badge badge-danger"{% if d.merged_into %} title="Same person as {{ d.merged_into }}"{% endif %}>DELETED{% if d.merged_into %} → {{ d.merged_into }}{% endif %}</span>
+{% else %}<span class="badge badge-success">ACTIVE</span>{% endif %}
